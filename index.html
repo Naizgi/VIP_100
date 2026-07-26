@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VIP Bingo - Choose Your Game</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header .logo {
+            font-size: 48px;
+            color: #FF0000;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FF0000, #FF6B6B);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .card-options {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card-option {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 25px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-option:hover {
+            transform: translateY(-3px);
+            border-color: var(--primary-color);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-option:active {
+            transform: scale(0.98);
+        }
+
+        .card-option .badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #FF0000;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        .card-option .price {
+            font-size: 36px;
+            font-weight: 700;
+            color: #FFD700;
+            margin-bottom: 5px;
+        }
+
+        .card-option .price small {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .card-option .label {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .card-option .description {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            line-height: 1.5;
+        }
+
+        .card-option .features {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .card-option .feature-tag {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .card-option .feature-tag i {
+            margin-right: 4px;
+            color: #FFD700;
+        }
+
+        .card-option .prize-info {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: rgba(255, 215, 0, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            font-size: 13px;
+            color: #FFD700;
+        }
+
+        .card-option .prize-info i {
+            margin-right: 6px;
+        }
+
+        /* Card 1: 10 birr (Standard) */
+        .card-option.standard {
+            --primary-color: #4CAF50;
+        }
+        .card-option.standard:hover {
+            border-color: #4CAF50;
+        }
+
+        /* Card 2: 100 birr (VIP) */
+        .card-option.vip {
+            --primary-color: #FFD700;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(255, 215, 0, 0.02));
+            border-color: rgba(255, 215, 0, 0.3);
+        }
+        .card-option.vip:hover {
+            border-color: #FFD700;
+            box-shadow: 0 10px 40px rgba(255, 215, 0, 0.15);
+        }
+        .card-option.vip .badge {
+            background: #FFD700;
+            color: #1a1a2e;
+        }
+        .card-option.vip .price {
+            color: #FFD700;
+        }
+
+        .card-option .arrow {
+            margin-top: 15px;
+            text-align: right;
+            color: rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .card-option:hover .arrow {
+            color: var(--primary-color, #FFD700);
+            transform: translateX(5px);
+        }
+
+        .user-info {
+            margin-top: 30px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .user-info .balance {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .user-info .balance i {
+            color: #FFD700;
+        }
+
+        .user-info .balance span {
+            font-weight: 600;
+            color: #FFD700;
+        }
+
+        .user-info .user-id {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .user-info .user-id i {
+            margin-right: 4px;
+        }
+
+        #access-denied {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a1a2e;
+            color: white;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #access-denied i {
+            font-size: 50px;
+            color: #f44336;
+            margin-bottom: 20px;
+        }
+        #access-denied h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        #access-denied p {
+            color: rgba(255, 255, 255, 0.6);
+            max-width: 300px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            .header h1 {
+                font-size: 22px;
+            }
+            .card-option {
+                padding: 20px;
+            }
+            .card-option .price {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="access-denied">
+        <i class="fas fa-lock"></i>
+        <h2>Access Restricted</h2>
+        <p>This game can only be played inside the Telegram App.</p>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">🎰</div>
+            <h1>VIP BINGO</h1>
+            <p>Choose your card price and start playing!</p>
+        </div>
+
+        <!-- Card Options -->
+        <div class="card-options">
+            <!-- Option 1: 10 birr (Standard) -->
+            <div class="card-option standard" onclick="selectGame(10)">
+                <div class="badge">STANDARD</div>
+                <div class="price">10 <small>birr</small></div>
+                <div class="label">🎯 Standard Game</div>
+                <div class="description">Perfect for casual players. Enjoy the classic bingo experience.</div>
+                <div class="features">
+                    <span class="feature-tag"><i class="fas fa-trophy"></i> Prize Pool: 80%</span>
+                    <span class="feature-tag"><i class="fas fa-users"></i> All Players</span>
+                    <span class="feature-tag"><i class="fas fa-bolt"></i> Fast Games</span>
+                </div>
+                <div class="prize-info">
+                    <i class="fas fa-gift"></i> 8 birr goes to prize pool • 2 birr platform fee
+                </div>
+                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
+            </div>
+
+            <!-- Option 2: 100 birr (VIP) -->
+            <div class="card-option vip" onclick="selectGame(100)">
+                <div class="badge">🌟 VIP</div>
+                <div class="price">100 <small>birr</small></div>
+                <div class="label">👑 VIP Game</div>
+                <div class="description">High stakes, bigger prizes! For serious players who want bigger wins.</div>
+                <div class="features">
+                    <span class="feature-tag"><i class="fas fa-trophy"></i> Prize Pool: 80%</span>
+                    <span class="feature-tag"><i class="fas fa-crown"></i> VIP Only</span>
+                    <span class="feature-tag"><i class="fas fa-gem"></i> Bigger Wins</span>
+                </div>
+                <div class="prize-info">
+                    <i class="fas fa-gift"></i> 80 birr goes to prize pool • 20 birr platform fee
+                </div>
+                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
+            </div>
+        </div>
+
+        <!-- User Info -->
+        <div class="user-info">
+            <div class="balance">
+                <i class="fas fa-wallet"></i>
+                Balance: <span id="wallet-balance">0.00</span> birr
+            </div>
+            <div class="user-id">
+                <i class="fas fa-user"></i>
+                <span id="user-id-display">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== CONFIGURATION ====================
+        const API_BASE_URL = `${window.location.protocol}//${window.location.host}/api`;
+
+        // ==================== TELEGRAM CHECK ====================
+        let isTelegram = false;
+        let tg = null;
+
+        if (window.Telegram && window.Telegram.WebApp) {
+            try {
+                tg = window.Telegram.WebApp;
+                if (tg.initData && tg.initData !== "") {
+                    isTelegram = true;
+                    console.log("✅ Telegram WebApp detected");
+                }
+            } catch(e) {
+                console.log("Error accessing Telegram WebApp:", e);
+            }
+        }
+
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        const isTelegramUserAgent = /Telegram/i.test(userAgent);
+
+        if (!isTelegram && !isTelegramUserAgent) {
+            const deniedDiv = document.getElementById("access-denied");
+            if (deniedDiv) {
+                deniedDiv.style.display = "flex";
+            }
+            throw new Error("Unauthorized: Outside Telegram Environment");
+        }
+
+        if (tg && typeof tg.expand === "function") {
+            try {
+                tg.expand();
+                console.log("✅ Telegram WebApp expanded");
+            } catch(e) {
+                console.log("Could not expand Telegram WebApp:", e);
+            }
+        }
+
+        console.log("✅ Telegram access check passed");
+
+        // ==================== GET USER ID ====================
+        function getUserId() {
+            let userId = null;
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const userIdFromUrl = urlParams.get("user_id");
+            if (userIdFromUrl) {
+                userId = userIdFromUrl;
+            }
+
+            if (!userId && window.Telegram && Telegram.WebApp) {
+                try {
+                    const user = Telegram.WebApp.initDataUnsafe?.user;
+                    if (user && user.id) {
+                        userId = user.id.toString();
+                    }
+                } catch (error) {
+                    console.error("Error getting Telegram user:", error);
+                }
+            }
+
+            if (!userId) {
+                let storedUserId = localStorage.getItem("haset_bingo_user_id");
+                if (!storedUserId) {
+                    storedUserId = Math.floor(Math.random() * 1000000) + 1;
+                    localStorage.setItem("haset_bingo_user_id", storedUserId);
+                }
+                userId = storedUserId;
+            }
+
+            return userId;
+        }
+
+        const userId = getUserId();
+        document.getElementById("user-id-display").textContent = userId;
+
+        // ==================== GET USER BALANCE ====================
+        async function getUserBalance() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/user/balance/${userId}`);
+                
+                if (!response.ok) {
+                    document.getElementById("wallet-balance").textContent = "0.00";
+                    return;
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById("wallet-balance").textContent = 
+                        parseFloat(data.balance || 0).toFixed(2);
+                } else {
+                    document.getElementById("wallet-balance").textContent = "0.00";
+                }
+            } catch (error) {
+                console.error("Error fetching balance:", error);
+                document.getElementById("wallet-balance").textContent = "0.00";
+            }
+        }
+
+        // ==================== SELECT GAME ====================
+        function selectGame(price) {
+            console.log(`Selected game with card price: ${price} birr`);
+
+            // Store the selected price in localStorage
+            localStorage.setItem("haset_bingo_card_price", price.toString());
+
+            // Show loading state
+            const options = document.querySelectorAll('.card-option');
+            options.forEach(opt => {
+                opt.style.opacity = '0.5';
+                opt.style.pointerEvents = 'none';
+            });
+
+            // Check if user has enough balance
+            const balanceText = document.getElementById("wallet-balance").textContent;
+            const balance = parseFloat(balanceText) || 0;
+
+            if (balance < price) {
+                // Show insufficient balance notification
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #f44336;
+                    color: white;
+                    padding: 15px 25px;
+                    border-radius: 10px;
+                    z-index: 1000;
+                    font-weight: 500;
+                    box-shadow: 0 4px 20px rgba(244, 67, 54, 0.4);
+                    animation: slideDown 0.3s ease;
+                `;
+                notification.innerHTML = `
+                    <i class="fas fa-exclamation-circle"></i> 
+                    Insufficient balance! You need ${price} birr. 
+                    Current balance: ${balance.toFixed(2)} birr
+                `;
+
+                document.body.appendChild(notification);
+
+                setTimeout(() => {
+                    notification.style.animation = 'slideUp 0.3s ease forwards';
+                    setTimeout(() => notification.remove(), 300);
+                }, 3000);
+
+                // Reset options
+                options.forEach(opt => {
+                    opt.style.opacity = '1';
+                    opt.style.pointerEvents = 'auto';
+                });
+                return;
+            }
+
+            // Redirect to game.html with the price parameter
+            const gameUrl = `/game?price=${price}&user_id=${userId}`;
+            console.log(`Redirecting to: ${gameUrl}`);
+            
+            // Small delay to show selection feedback
+            setTimeout(() => {
+                window.location.href = gameUrl;
+            }, 300);
+        }
+
+        // ==================== KEYBOARD SHORTCUTS ====================
+        document.addEventListener('keydown', function(e) {
+            if (e.key === '1' || e.key === '1') {
+                selectGame(10);
+            } else if (e.key === '2' || e.key === '2') {
+                selectGame(100);
+            }
+        });
+
+        // ==================== ANIMATIONS ====================
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideDown {
+                from {
+                    transform: translateX(-50%) translateY(-100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(-50%) translateY(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideUp {
+                from {
+                    transform: translateX(-50%) translateY(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(-50%) translateY(-100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // ==================== INITIALIZATION ====================
+        async function init() {
+            console.log("Initializing index page...");
+            await getUserBalance();
+
+            // Check if there's a stored price preference
+            const storedPrice = localStorage.getItem("haset_bingo_card_price");
+            if (storedPrice) {
+                console.log(`Previously selected price: ${storedPrice} birr`);
+            }
+
+            // Auto-refresh balance every 30 seconds
+            setInterval(getUserBalance, 30000);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+
+        // ==================== EXPOSE FUNCTIONS TO GLOBAL ====================
+        window.selectGame = selectGame;
+        window.getUserBalance = getUserBalance;
+    </script>
+
+</body>
+</html>
