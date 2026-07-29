@@ -2995,9 +2995,9 @@ async def main():
         
         from config import WEB_APP_URL, WEBSERVER_HOST, WEBSERVER_PORT
         if WEB_APP_URL:
-            webapp_url = f"{WEB_APP_URL}/game.html?user_id={user_id}"
+            webapp_url = f"{WEB_APP_URL}/index.html?user_id={user_id}"
         else:
-            webapp_url = f"http://{WEBSERVER_HOST}:{WEBSERVER_PORT}/game.html?user_id={user_id}"
+            webapp_url = f"http://{WEBSERVER_HOST}:{WEBSERVER_PORT}/index.html?user_id={user_id}"
         
         keyboard = types.InlineKeyboardMarkup(
             inline_keyboard=[
