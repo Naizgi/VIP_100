@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>vip Bingo - Admin Panel</title>
+    <title>VIP Bingo - Admin Panel</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -1852,6 +1852,32 @@
             padding: 8px 0;
         }
 
+        /* ==================== NEW: PRICE TIER STYLES ==================== */
+        .price-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #ffd700;
+            color: #1a1a2e;
+        }
+        
+        .price-tag.vip {
+            background: linear-gradient(135deg, #ffd700, #ff6b00);
+            color: white;
+        }
+        
+        .price-tag.standard {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .price-tag.premium {
+            background: #ff9800;
+            color: white;
+        }
+
         @media (max-width: 767px) {
             body {
                 padding-bottom: 80px;
@@ -1942,6 +1968,14 @@
             .fake-player-range-inputs {
                 flex-direction: column;
                 gap: 10px;
+            }
+
+            .price-filter-container {
+                flex-direction: column;
+                width: 100%;
+            }
+            .price-filter-container .filter-select {
+                width: 100%;
             }
         }
 
@@ -2272,6 +2306,19 @@
         body.theme-dark .current-fake-stats {
             background: #2d2d2d;
         }
+
+        /* ==================== PRICE FILTER STYLES ==================== */
+        .price-filter-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .price-filter-container .filter-select {
+            width: auto;
+            min-width: 120px;
+        }
     </style>
 </head>
 <body>
@@ -2299,497 +2346,368 @@
         </div>
     </div>
 
-   <header class="admin-header">
-    <div class="admin-title">
-        <div class="admin-logo" style="width: 60px; height: 60px; border-radius: 50%; overflow: hidden; background: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-            <img src="static/VIP_logo.jpg" alt="Habesha Bingo Logo" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+    <header class="admin-header">
+        <div class="admin-title">
+            <div class="admin-logo" style="width: 60px; height: 60px; border-radius: 50%; overflow: hidden; background: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                <img src="static/VIP_logo.jpg" alt="Habesha Bingo Logo" style="width: 100%; height: 100%; object-fit: cover; display: block;">
+            </div>
+            <div>
+                <h1>VIP Bingo Admin</h1>
+                <p>Monitor and manage your bingo system</p>
+            </div>
         </div>
-        <div>
-            <h1>vip Bingo Admin</h1>
-            <p>Monitor and manage your bingo system</p>
+        <div class="admin-info">
+            <div class="status">
+                <span class="status-online"></span>
+                <span>System Online</span>
+            </div>
+            <div id="current-time">Loading...</div>
+            <div id="admin-user">Admin: <span id="admin-name">Loading...</span></div>
+            <button class="admin-profile-btn" onclick="openAdminProfileModal()">
+                <i class="fas fa-user-cog"></i>
+                <span>Profile</span>
+            </button>
+            <button class="logout-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-card success">
+            <div class="stat-icon success">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-value" id="total-users">0</div>
+            <div class="stat-label">Total Users</div>
+            <div class="stat-change change-positive">
+                <i class="fas fa-arrow-up"></i>
+                <span id="user-change">0%</span> this week
+            </div>
+        </div>
+        
+        <div class="stat-card warning">
+            <div class="stat-icon warning">
+                <i class="fas fa-arrow-trend-down"></i>
+            </div>
+            <div class="stat-value" style="color: var(--danger-color);" id="active-games">0</div>
+            <div class="stat-label">Total Deductable</div>
+            <div class="stat-change " style="color: var(--danger-color);">
+                <i class="fas fa-arrow-down"></i>
+            </div>
+        </div>
+        
+        <div class="stat-card danger">
+            <div class="stat-icon danger">
+                <i class="fas fa-money-bill-wave"></i>
+            </div>
+            <div class="stat-value" id="pending-payments">0</div>
+            <div class="stat-label">Pending Requests</div>
+            <div class="stat-change change-positive">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="payment-change">0</span> needs attention
+            </div>
+        </div>
+        
+        <div class="stat-card primary">
+            <div class="stat-icon primary">
+                <i class="fas fa-wallet"></i>
+            </div>
+            <div class="stat-value" id="total-balance">0.00 birr</div>
+            <div class="stat-label">Total Users Balance</div>
+            <div class="stat-change change-positive">
+                <i class="fas fa-coins"></i>
+                <span id="total-deposit">0.00 birr</span> total deposit
+            </div>
         </div>
     </div>
-    <div class="admin-info">
-        <div class="status">
-            <span class="status-online"></span>
-            <span>System Online</span>
+
+    <!-- Weekly Commission Section -->
+    <div class="weekly-commission">
+        <div class="widget-title">
+            <i class="fas fa-calendar-week"></i>
+            <span>Weekly Commission And Deductable Summary</span>
+            <div style="display: flex; gap: 10px; margin-left: auto;">
+                <button class="btn-action btn-view" id="view-commission-details">
+                    <i class="fas fa-chart-pie"></i> Details
+                </button>
+                <button class="btn-action btn-view" id="refresh-weekly-commission">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
         </div>
-        <div id="current-time">Loading...</div>
-        <div id="admin-user">Admin: <span id="admin-name">Loading...</span></div>
-        <button class="admin-profile-btn" onclick="openAdminProfileModal()">
-            <i class="fas fa-user-cog"></i>
-            <span>Profile</span>
-        </button>
-        <button class="logout-btn" onclick="logout()">
-            <i class="fas fa-sign-out-alt"></i>
-            <span>Logout</span>
-        </button>
+        
+        <div class="commission-stats">
+            <div class="commission-stat">
+                <div class="commission-value" id="this-week-commission">0 birr</div>
+                <div class="commission-label">This Week</div>
+            </div>
+            <div class="commission-stat">
+                <div class="commission-value" id="last-week-commission">0 birr</div>
+                <div class="commission-label">Last Week</div>
+            </div>
+            <div class="commission-stat">
+                <div class="commission-value" id="this-month-commission">0 birr</div>
+                <div class="commission-label">This Month</div>
+            </div>
+            <div class="commission-stat">
+                <div class="commission-value" id="total-commission">0 birr</div>
+                <div class="commission-label">Total All Time</div>
+            </div>
+        </div>
+        
+        <div class="table-container">
+            <table class="commission-table">
+                <thead>
+                    <tr>
+                        <th>Week</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Games</th>
+                        <th>Total Sales</th>
+                        <th>Commission (20%)</th>
+                        <th>Deductable (loss)</th>
+                    </tr>
+                </thead>
+                <tbody id="weekly-commission-body">
+                    <tr>
+                        <td colspan="7" class="loading">Loading weekly commission data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
-</header>
-        <!-- Stats Grid -->
-        <div class="stats-grid">
-            <div class="stat-card success">
-                <div class="stat-icon success">
+
+    <!-- Main Content -->
+    <div class="admin-main">
+        <!-- Tabs -->
+        <div class="admin-tabs">
+            <div class="tab-header">
+                <button class="tab-btn active" data-tab="games">
+                    <i class="fas fa-gamepad"></i>
+                    <span>Games</span>
+                </button>
+                <button class="tab-btn" data-tab="users">
                     <i class="fas fa-users"></i>
-                </div>
-                <div class="stat-value" id="total-users">0</div>
-                <div class="stat-label">Total Users</div>
-                <div class="stat-change change-positive">
-                    <i class="fas fa-arrow-up"></i>
-                    <span id="user-change">0%</span> this week
-                </div>
-            </div>
-            
-            <div class="stat-card warning">
-                <div class="stat-icon warning">
-                    <i class="fas fa-arrow-trend-down"></i>
-                </div>
-                <div class="stat-value" style="color: var(--danger-color);" id="active-games">0</div>
-                <div class="stat-label">Total Deductable</div>
-                <div class="stat-change " style="color: var(--danger-color);">
-                    <i class="fas fa-arrow-down"></i>
-                    <!-- <span id="game-change">0%</span> -->
-                </div>
-            </div>
-            
-            <div class="stat-card danger">
-                <div class="stat-icon danger">
+                    <span>Users</span>
+                </button>
+                <button class="tab-btn" data-tab="payments">
                     <i class="fas fa-money-bill-wave"></i>
-                </div>
-                <div class="stat-value" id="pending-payments">0</div>
-                <div class="stat-label">Pending Requests</div>
-                <div class="stat-change change-positive">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <span id="payment-change">0</span> needs attention
-                </div>
+                    <span>Payments</span>
+                </button>
+                <button class="tab-btn" data-tab="transactions">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>Transactions</span>
+                </button>
+                <button class="tab-btn" data-tab="system">
+                    <i class="fas fa-database"></i>
+                    <span>System</span>
+                </button>
             </div>
             
-            <div class="stat-card primary">
-                <div class="stat-icon primary">
-                    <i class="fas fa-wallet"></i>
-                </div>
-                <div class="stat-value" id="total-balance">0.00 birr</div>
-                <div class="stat-label">Total Users Balance</div>
-                <div class="stat-change change-positive">
-                    <i class="fas fa-coins"></i>
-                    <span id="total-deposit">0.00 birr</span> total deposit
-                </div>
-            </div>
-        </div>
-
-        <!-- Weekly Commission Section -->
-        <div class="weekly-commission">
-            <div class="widget-title">
-                <i class="fas fa-calendar-week"></i>
-                <span>Weekly Commission And Deductable Summary</span>
-                <div style="display: flex; gap: 10px; margin-left: auto;">
-                    <button class="btn-action btn-view" id="view-commission-details">
-                        <i class="fas fa-chart-pie"></i> Details
-                    </button>
-                    <button class="btn-action btn-view" id="refresh-weekly-commission">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-            </div>
-            
-            <div class="commission-stats">
-                <div class="commission-stat">
-                    <div class="commission-value" id="this-week-commission">0 birr</div>
-                    <div class="commission-label">This Week</div>
-                </div>
-                <div class="commission-stat">
-                    <div class="commission-value" id="last-week-commission">0 birr</div>
-                    <div class="commission-label">Last Week</div>
-                </div>
-                <div class="commission-stat">
-                    <div class="commission-value" id="this-month-commission">0 birr</div>
-                    <div class="commission-label">This Month</div>
-                </div>
-                <div class="commission-stat">
-                    <div class="commission-value" id="total-commission">0 birr</div>
-                    <div class="commission-label">Total All Time</div>
-                </div>
-            </div>
-            
-            <div class="table-container">
-                <table class="commission-table">
-                    <thead>
-                        <tr>
-                            <th>Week</th>
-                            <th>Start Date</th>
-                            <th>End Date</th>
-                            <th>Games</th>
-                            <th>Total Sales</th>
-                            <th>Commission (20%)</th>
-                            <th>Deductable (loss)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="weekly-commission-body">
-                        <tr>
-                            <td colspan="6" class="loading">Loading weekly commission data...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="admin-main">
-            <!-- Tabs -->
-            <div class="admin-tabs">
-                <div class="tab-header">
-                    <button class="tab-btn active" data-tab="games">
-                        <i class="fas fa-gamepad"></i>
-                        <span>Games</span>
-                    </button>
-                    <button class="tab-btn" data-tab="users">
-                        <i class="fas fa-users"></i>
-                        <span>Users</span>
-                    </button>
-                    <button class="tab-btn" data-tab="payments">
-                        <i class="fas fa-money-bill-wave"></i>
-                        <span>Payments</span>
-                    </button>
-                    <button class="tab-btn" data-tab="transactions">
-                        <i class="fas fa-exchange-alt"></i>
-                        <span>Transactions</span>
-                    </button>
-                    <button class="tab-btn" data-tab="system">
-                        <i class="fas fa-database"></i>
-                        <span>System</span>
-                    </button>
+            <div class="tab-content">
+                <!-- Games Tab -->
+                <div class="tab-pane active" id="games-tab">
+                    <div class="search-filter">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="game-search" placeholder="Search games...">
+                        </div>
+                        <select class="filter-select" id="game-status-filter">
+                            <option value="all">All Status</option>
+                            <option value="card_purchase">Purchase Phase</option>
+                            <option value="active">Active</option>
+                            <option value="winner_display">Winner Display</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                        <!-- ==================== PRICE TIER FILTER ==================== -->
+                        <select class="filter-select" id="game-price-filter">
+                            <option value="all">All Prices</option>
+                            <option value="10">10 birr</option>
+                            <option value="100">100 birr (VIP)</option>
+                        </select>
+                        <button class="btn btn-primary" id="refresh-games">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="games-table">
+                            <thead>
+                                <tr>
+                                    <th>Game ID</th>
+                                    <th>Round</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                    <th>Players</th>
+                                    <th>Prize Pool</th>
+                                    <th>Start Time</th>
+                                    <th>Cards Sold</th>
+                                    <th>Commission</th>
+                                    <th>Called Numbers</th>
+                                    <th>Winner</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="games-table-body">
+                                <tr>
+                                    <td colspan="12" class="loading">Loading games...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Games Pagination -->
+                    <div class="pagination" id="games-pagination" style="display: none;">
+                        <div class="pagination-info" id="games-pagination-info"></div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="games-first-page" disabled>First</button>
+                            <button class="pagination-btn" id="games-prev-page" disabled>Prev</button>
+                            <div class="page-numbers" id="games-page-numbers"></div>
+                            <button class="pagination-btn" id="games-next-page" disabled>Next</button>
+                            <button class="pagination-btn" id="games-last-page" disabled>Last</button>
+                        </div>
+                        <select class="pagination-select" id="games-page-size">
+                            <option value="10">10 per page</option>
+                            <option value="20" selected>20 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+                    </div>
                 </div>
                 
-                <div class="tab-content">
-                    <!-- Games Tab -->
-                    <div class="tab-pane active" id="games-tab">
+                <!-- Users Tab -->
+                <div class="tab-pane" id="users-tab">
+                    <div class="search-filter">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="user-search" placeholder="Search users...">
+                        </div>
+                        <select class="filter-select" id="user-search-type">
+                            <option value="all">All Fields</option>
+                            <option value="id">User ID</option>
+                            <option value="username">Username</option>
+                            <option value="name">Full Name</option>
+                        </select>
+                        <button class="btn btn-primary" id="search-users-btn">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-primary" id="refresh-users">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Search Results Info -->
+                    <div id="search-results-info" style="margin-bottom: 10px; font-size: 14px; color: #666;"></div>
+                    
+                    <div class="table-container">
+                        <table id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>User Info</th>
+                                    <th>Full Name</th>
+                                    <th>Username</th>
+                                    <th>Balance</th>
+                                    <th>Games</th>
+                                    <th>Win Data</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <tr>
+                                    <td colspan="8" class="loading">Loading users...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Users Pagination -->
+                    <div class="pagination" id="users-pagination" style="display: none;">
+                        <div class="pagination-info" id="users-pagination-info"></div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="users-first-page" disabled>First</button>
+                            <button class="pagination-btn" id="users-prev-page" disabled>Prev</button>
+                            <div class="page-numbers" id="users-page-numbers"></div>
+                            <button class="pagination-btn" id="users-next-page" disabled>Next</button>
+                            <button class="pagination-btn" id="users-last-page" disabled>Last</button>
+                        </div>
+                        <select class="pagination-select" id="users-page-size">
+                            <option value="10">10 per page</option>
+                            <option value="20" selected>20 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Payments Tab -->
+                <div class="tab-pane" id="payments-tab">
+                    <!-- Payment Type Tabs -->
+                    <div class="payment-tabs">
+                        <button class="payment-tab-btn active" data-payment-type="deposits">
+                            <i class="fas fa-arrow-down"></i>
+                            <span>Deposits</span>
+                        </button>
+                        <button class="payment-tab-btn" data-payment-type="withdrawals">
+                            <i class="fas fa-arrow-up"></i>
+                            <span>Withdrawals</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Deposits Content -->
+                    <div class="payment-tab-content active" id="deposits-content">
                         <div class="search-filter">
                             <div class="search-box">
                                 <i class="fas fa-search"></i>
-                                <input type="text" id="game-search" placeholder="Search games...">
+                                <input type="text" id="deposit-search" placeholder="Search deposits...">
                             </div>
-                            <select class="filter-select" id="game-status-filter">
+                            <select class="filter-select" id="deposit-status-filter">
+                                <option value="pending">Pending</option>
                                 <option value="all">All Status</option>
-                                <option value="card_purchase">Purchase Phase</option>
-                                <option value="active">Active</option>
-                                <option value="winner_display">Winner Display</option>
-                                <option value="completed">Completed</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
                             </select>
-                            <button class="btn btn-primary" id="refresh-games">
+                            <button class="btn btn-primary" id="refresh-deposits">
                                 <i class="fas fa-sync-alt"></i>
                             </button>
                         </div>
                         
                         <div class="table-container">
-                            <table id="games-table">
-                                <thead>
-                                    <tr>
-                                        <th>Game ID</th>
-                                        <th>Round</th>
-                                        <th>Status</th>
-                                        <th>Players</th>
-                                        <th>Prize Pool</th>
-                                        <th>Start Time</th>
-                                        <th>Cards Sold</th>
-                                        <th>Commission</th>
-                                        <th>Called Numbers</th>
-                                        <th>Winner</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="games-table-body">
-                                    <tr>
-                                        <td colspan="11" class="loading">Loading games...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Games Pagination -->
-                        <div class="pagination" id="games-pagination" style="display: none;">
-                            <div class="pagination-info" id="games-pagination-info"></div>
-                            <div class="pagination-controls">
-                                <button class="pagination-btn" id="games-first-page" disabled>First</button>
-                                <button class="pagination-btn" id="games-prev-page" disabled>Prev</button>
-                                <div class="page-numbers" id="games-page-numbers"></div>
-                                <button class="pagination-btn" id="games-next-page" disabled>Next</button>
-                                <button class="pagination-btn" id="games-last-page" disabled>Last</button>
-                            </div>
-                            <select class="pagination-select" id="games-page-size">
-                                <option value="10">10 per page</option>
-                                <option value="20" selected>20 per page</option>
-                                <option value="50">50 per page</option>
-                                <option value="100">100 per page</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <!-- Users Tab -->
-                    <div class="tab-pane" id="users-tab">
-                        <div class="search-filter">
-                            <div class="search-box">
-                                <i class="fas fa-search"></i>
-                                <input type="text" id="user-search" placeholder="Search users...">
-                            </div>
-                            <select class="filter-select" id="user-search-type">
-                                <option value="all">All Fields</option>
-                                <option value="id">User ID</option>
-                                <option value="username">Username</option>
-                                <option value="name">Full Name</option>
-                            </select>
-                            <button class="btn btn-primary" id="search-users-btn">
-                                <i class="fas fa-search"></i> Search
-                            </button>
-                            <button class="btn btn-primary" id="refresh-users">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
-                        </div>
-                        
-                        <!-- Search Results Info -->
-                        <div id="search-results-info" style="margin-bottom: 10px; font-size: 14px; color: #666;"></div>
-                        
-                        <div class="table-container">
-                            <table id="users-table">
-                                <thead>
-                                    <tr>
-                                        <th>User Info</th>
-                                        <th>Full Name</th>
-                                        <th>Username</th>
-                                        <th>Balance</th>
-                                        <th>Games</th>
-                                        <th>Win Data</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="users-table-body">
-                                    <tr>
-                                        <td colspan="8" class="loading">Loading users...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <!-- Users Pagination -->
-                        <div class="pagination" id="users-pagination" style="display: none;">
-                            <div class="pagination-info" id="users-pagination-info"></div>
-                            <div class="pagination-controls">
-                                <button class="pagination-btn" id="users-first-page" disabled>First</button>
-                                <button class="pagination-btn" id="users-prev-page" disabled>Prev</button>
-                                <div class="page-numbers" id="users-page-numbers"></div>
-                                <button class="pagination-btn" id="users-next-page" disabled>Next</button>
-                                <button class="pagination-btn" id="users-last-page" disabled>Last</button>
-                            </div>
-                            <select class="pagination-select" id="users-page-size">
-                                <option value="10">10 per page</option>
-                                <option value="20" selected>20 per page</option>
-                                <option value="50">50 per page</option>
-                                <option value="100">100 per page</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <!-- Payments Tab -->
-                    <div class="tab-pane" id="payments-tab">
-                        <!-- Payment Type Tabs -->
-                        <div class="payment-tabs">
-                            <button class="payment-tab-btn active" data-payment-type="deposits">
-                                <i class="fas fa-arrow-down"></i>
-                                <span>Deposits</span>
-                            </button>
-                            <button class="payment-tab-btn" data-payment-type="withdrawals">
-                                <i class="fas fa-arrow-up"></i>
-                                <span>Withdrawals</span>
-                            </button>
-                        </div>
-                        
-                        <!-- Deposits Content -->
-                        <div class="payment-tab-content active" id="deposits-content">
-                            <div class="search-filter">
-                                <div class="search-box">
-                                    <i class="fas fa-search"></i>
-                                    <input type="text" id="deposit-search" placeholder="Search deposits...">
-                                </div>
-                                <select class="filter-select" id="deposit-status-filter">
-                                    <option value="pending">Pending</option>
-                                    <option value="all">All Status</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="rejected">Rejected</option>
-                                </select>
-                                <button class="btn btn-primary" id="refresh-deposits">
-                                    <i class="fas fa-sync-alt"></i>
-                                </button>
-                            </div>
-                            
-                            <div class="table-container">
-                                <table id="deposits-table">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>User</th>
-                                            <th>Full Name</th>
-                                            <th>Amount</th>
-                                            <th>Method</th>
-                                            <th>Status</th>
-                                            <th>Date</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="deposits-table-body">
-                                        <tr>
-                                            <td colspan="8" class="loading">Loading deposits...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            
-                            <!-- Deposits Pagination -->
-                            <div class="pagination" id="deposits-pagination" style="display: none;">
-                                <div class="pagination-info" id="deposits-pagination-info"></div>
-                                <div class="pagination-controls">
-                                    <button class="pagination-btn" id="deposits-first-page" disabled>First</button>
-                                    <button class="pagination-btn" id="deposits-prev-page" disabled>Prev</button>
-                                    <div class="page-numbers" id="deposits-page-numbers"></div>
-                                    <button class="pagination-btn" id="deposits-next-page" disabled>Next</button>
-                                    <button class="pagination-btn" id="deposits-last-page" disabled>Last</button>
-                                </div>
-                                <select class="pagination-select" id="deposits-page-size">
-                                    <option value="10">10 per page</option>
-                                    <option value="20" selected>20 per page</option>
-                                    <option value="50">50 per page</option>
-                                    <option value="100">100 per page</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <!-- Withdrawals Content -->
-                        <div class="payment-tab-content" id="withdrawals-content">
-                            <div class="search-filter">
-                                <div class="search-box">
-                                    <i class="fas fa-search"></i>
-                                    <input type="text" id="withdrawal-search" placeholder="Search withdrawals...">
-                                </div>
-                                <select class="filter-select" id="withdrawal-status-filter">
-                                    <option value="pending">Pending</option>
-                                    <option value="all">All Status</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="rejected">Rejected</option>
-                                </select>
-                                <button class="btn btn-primary" id="refresh-withdrawals">
-                                    <i class="fas fa-sync-alt"></i>
-                                </button>
-                            </div>
-                            
-                            <div class="table-container">
-                                <table id="withdrawals-table">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>User</th>
-                                            <th>Full Name</th>
-                                            <th>Amount</th>
-                                            <th>Method</th>
-                                            <th>Phone</th>
-                                            <th>Status</th>
-                                            <th>Date</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="withdrawals-table-body">
-                                        <tr>
-                                            <td colspan="9" class="loading">Loading withdrawals...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            
-                            <!-- Withdrawals Pagination -->
-                            <div class="pagination" id="withdrawals-pagination" style="display: none;">
-                                <div class="pagination-info" id="withdrawals-pagination-info"></div>
-                                <div class="pagination-controls">
-                                    <button class="pagination-btn" id="withdrawals-first-page" disabled>First</button>
-                                    <button class="pagination-btn" id="withdrawals-prev-page" disabled>Prev</button>
-                                    <div class="page-numbers" id="withdrawals-page-numbers"></div>
-                                    <button class="pagination-btn" id="withdrawals-next-page" disabled>Next</button>
-                                    <button class="pagination-btn" id="withdrawals-last-page" disabled>Last</button>
-                                </div>
-                                <select class="pagination-select" id="withdrawals-page-size">
-                                    <option value="10">10 per page</option>
-                                    <option value="20" selected>20 per page</option>
-                                    <option value="50">50 per page</option>
-                                    <option value="100">100 per page</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Transactions Tab -->
-                    <div class="tab-pane" id="transactions-tab">
-                        <!-- Transaction Type Tabs -->
-                        <div class="transaction-tabs">
-                            <button class="transaction-tab-btn active" data-transaction-type="all">
-                                <i class="fas fa-list"></i>
-                                <span>All</span>
-                            </button>
-                            <button class="transaction-tab-btn" data-transaction-type="deposit">
-                                <i class="fas fa-arrow-down"></i>
-                                <span>Deposits</span>
-                            </button>
-                            <button class="transaction-tab-btn" data-transaction-type="withdrawal">
-                                <i class="fas fa-arrow-up"></i>
-                                <span>Withdrawals</span>
-                            </button>
-                            <button class="transaction-tab-btn" data-transaction-type="game">
-                                <i class="fas fa-gamepad"></i>
-                                <span>Game</span>
-                            </button>
-                            <button class="transaction-tab-btn" data-transaction-type="admin">
-                                <i class="fas fa-cog"></i>
-                                <span>Admin</span>
-                            </button>
-                        </div>
-                        
-                        <div class="search-filter">
-                            <div class="search-box">
-                                <i class="fas fa-search"></i>
-                                <input type="text" id="transaction-search" placeholder="Search transactions...">
-                            </div>
-                            <button class="btn btn-primary" id="refresh-transactions">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
-                        </div>
-                        
-                        <div class="table-container">
-                            <table id="transactions-table">
+                            <table id="deposits-table">
                                 <thead>
                                     <tr>
                                         <th>ID</th>
-                                        <th>Type</th>
-                                        <th>Amount</th>
                                         <th>User</th>
-                                        <th>Description</th>
-                                        <th>Time</th>
+                                        <th>Full Name</th>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody id="transactions-table-body">
+                                <tbody id="deposits-table-body">
                                     <tr>
-                                        <td colspan="6" class="loading">Loading transactions...</td>
+                                        <td colspan="8" class="loading">Loading deposits...</td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                         
-                        <!-- Transactions Pagination -->
-                        <div class="pagination" id="transactions-pagination" style="display: none;">
-                            <div class="pagination-info" id="transactions-pagination-info"></div>
+                        <!-- Deposits Pagination -->
+                        <div class="pagination" id="deposits-pagination" style="display: none;">
+                            <div class="pagination-info" id="deposits-pagination-info"></div>
                             <div class="pagination-controls">
-                                <button class="pagination-btn" id="transactions-first-page" disabled>First</button>
-                                <button class="pagination-btn" id="transactions-prev-page" disabled>Prev</button>
-                                <div class="page-numbers" id="transactions-page-numbers"></div>
-                                <button class="pagination-btn" id="transactions-next-page" disabled>Next</button>
-                                <button class="pagination-btn" id="transactions-last-page" disabled>Last</button>
+                                <button class="pagination-btn" id="deposits-first-page" disabled>First</button>
+                                <button class="pagination-btn" id="deposits-prev-page" disabled>Prev</button>
+                                <div class="page-numbers" id="deposits-page-numbers"></div>
+                                <button class="pagination-btn" id="deposits-next-page" disabled>Next</button>
+                                <button class="pagination-btn" id="deposits-last-page" disabled>Last</button>
                             </div>
-                            <select class="pagination-select" id="transactions-page-size">
+                            <select class="pagination-select" id="deposits-page-size">
                                 <option value="10">10 per page</option>
                                 <option value="20" selected>20 per page</option>
                                 <option value="50">50 per page</option>
@@ -2798,182 +2716,326 @@
                         </div>
                     </div>
                     
-                    <!-- System Tab with Download & Restore -->
-                    <div class="tab-pane" id="system-tab">
-                        <div class="widget">
-                            <div class="widget-title">
-                                <i class="fas fa-database"></i>
-                                <span>Database Management</span>
+                    <!-- Withdrawals Content -->
+                    <div class="payment-tab-content" id="withdrawals-content">
+                        <div class="search-filter">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="withdrawal-search" placeholder="Search withdrawals...">
                             </div>
-                            <div style="display: flex; flex-direction: column; gap: 15px;">
-                                <div class="detail-row">
-                                    <span class="detail-label">Database Status:</span>
-                                    <span class="detail-value" id="db-status">Checking...</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Database Size:</span>
-                                    <span class="detail-value" id="db-size">Loading...</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Last Modified:</span>
-                                    <span class="detail-value" id="db-modified">Loading...</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Record Counts:</span>
-                                    <span class="detail-value" id="db-records">Loading...</span>
-                                </div>
-                                <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
-                                    <button class="btn btn-info" id="check-db-info">
-                                        <i class="fas fa-info-circle"></i> Check Database
-                                    </button>
-                                    <button class="btn btn-success" id="download-db-gz">
-                                        <i class="fas fa-file-archive"></i> Download (GZIP)
-                                    </button>
-                                    <button class="btn btn-primary" id="download-db-zip">
-                                        <i class="fas fa-file-zipper"></i> Download (ZIP)
-                                    </button>
-                                    <button class="btn btn-secondary" id="download-db-uncompressed">
-                                        <i class="fas fa-database"></i> Download (Uncompressed)
-                                    </button>
-                                    <button class="btn btn-warning" id="restore-db-btn">
-                                        <i class="fas fa-undo-alt"></i> Restore Database
-                                    </button>
-                                </div>
-                                <div class="payment-message" style="background: #fff3cd; border-left-color: #856404;">
-                                    <p><strong>⚠️ Restore Warning:</strong> Restoring will replace the current database. 
-                                    The system will automatically backup the current database and restart after restore.</p>
-                                    <p><strong>Supported formats:</strong> .db, .db.gz, .db.zip, .sqlite, .sqlite3</p>
-                                </div>
-                            </div>
+                            <select class="filter-select" id="withdrawal-status-filter">
+                                <option value="pending">Pending</option>
+                                <option value="all">All Status</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                            <button class="btn btn-primary" id="refresh-withdrawals">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
                         </div>
                         
-                        <div class="widget">
-                            <div class="widget-title">
-                                <i class="fas fa-cogs"></i>
-                                <span>System Actions</span>
+                        <div class="table-container">
+                            <table id="withdrawals-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>User</th>
+                                        <th>Full Name</th>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Phone</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="withdrawals-table-body">
+                                    <tr>
+                                        <td colspan="9" class="loading">Loading withdrawals...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Withdrawals Pagination -->
+                        <div class="pagination" id="withdrawals-pagination" style="display: none;">
+                            <div class="pagination-info" id="withdrawals-pagination-info"></div>
+                            <div class="pagination-controls">
+                                <button class="pagination-btn" id="withdrawals-first-page" disabled>First</button>
+                                <button class="pagination-btn" id="withdrawals-prev-page" disabled>Prev</button>
+                                <div class="page-numbers" id="withdrawals-page-numbers"></div>
+                                <button class="pagination-btn" id="withdrawals-next-page" disabled>Next</button>
+                                <button class="pagination-btn" id="withdrawals-last-page" disabled>Last</button>
                             </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
-                                <button class="btn btn-warning" onclick="restartGameManager()">
-                                    <i class="fas fa-redo"></i> Restart Game Manager
-                                </button>
-                                <button class="btn btn-danger" onclick="clearCache()">
-                                    <i class="fas fa-trash"></i> Clear Cache
-                                </button>
-                                <button class="btn btn-primary" onclick="backupDatabase()">
-                                    <i class="fas fa-database"></i> Manual Backup
-                                </button>
-                                <button class="btn btn-info" onclick="checkHealth()">
-                                    <i class="fas fa-heartbeat"></i> Health Check
-                                </button>
-                                <button class="btn btn-reset-game" onclick="forceResetGame()">
-                                    <i class="fas fa-sync-alt"></i> Force Reset Game
-                                </button>
-                                <button class="btn btn-warning" onclick="openFakePlayerSettingsModal()">
-                                    <i class="fas fa-robot"></i> Fake Players
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Sidebar -->
-            <div class="admin-sidebar">
-                <!-- Game Status Widget -->
-                <div class="widget">
-                    <div class="game-status">
-                        <div class="game-status-icon">
-                            <i class="fas fa-dice"></i>
-                        </div>
-                        <div class="game-status-text">
-                            <h3 id="current-game-status">No Active Game</h3>
-                            <p id="current-game-info">Start a new game round</p>
-                            <div class="countdown" id="game-countdown">--:--</div>
-                        </div>
-                        <div class="game-controls">
-                            <button class="btn-game-control btn-start" id="start-game-btn">
-                                <i class="fas fa-play"></i> Start New Game
-                            </button>
-                            <button class="btn-game-control btn-stop" id="stop-game-btn" disabled>
-                                <i class="fas fa-stop"></i> Stop Game
-                            </button>
-                            <button class="btn-game-control btn-call" id="call-number-btn" disabled>
-                                <i class="fas fa-bullhorn"></i> Call Number
-                            </button>
-                            <button class="btn-game-control btn-reset" id="force-reset-game-btn" style="background: #ff6b6b;">
-                                <i class="fas fa-sync-alt"></i> Force Reset Game
-                            </button>
+                            <select class="pagination-select" id="withdrawals-page-size">
+                                <option value="10">10 per page</option>
+                                <option value="20" selected>20 per page</option>
+                                <option value="50">50 per page</option>
+                                <option value="100">100 per page</option>
+                            </select>
                         </div>
                     </div>
                 </div>
                 
-                <!-- Quick Actions Widget -->
-                <div class="widget">
-                    <div class="widget-title">
-                        <i class="fas fa-bolt"></i>
-                        <span>Quick Actions</span>
+                <!-- Transactions Tab -->
+                <div class="tab-pane" id="transactions-tab">
+                    <!-- Transaction Type Tabs -->
+                    <div class="transaction-tabs">
+                        <button class="transaction-tab-btn active" data-transaction-type="all">
+                            <i class="fas fa-list"></i>
+                            <span>All</span>
+                        </button>
+                        <button class="transaction-tab-btn" data-transaction-type="deposit">
+                            <i class="fas fa-arrow-down"></i>
+                            <span>Deposits</span>
+                        </button>
+                        <button class="transaction-tab-btn" data-transaction-type="withdrawal">
+                            <i class="fas fa-arrow-up"></i>
+                            <span>Withdrawals</span>
+                        </button>
+                        <button class="transaction-tab-btn" data-transaction-type="game">
+                            <i class="fas fa-gamepad"></i>
+                            <span>Game</span>
+                        </button>
+                        <button class="transaction-tab-btn" data-transaction-type="admin">
+                            <i class="fas fa-cog"></i>
+                            <span>Admin</span>
+                        </button>
                     </div>
-                    <div class="quick-actions">
-                        <div class="quick-action" id="quick-add-balance">
-                            <div class="action-icon">
-                                <i class="fas fa-plus-circle"></i>
-                            </div>
-                            <div class="action-label">Add Balance</div>
+                    
+                    <div class="search-filter">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="transaction-search" placeholder="Search transactions...">
                         </div>
-                        <div class="quick-action" id="quick-process-payments">
-                            <div class="action-icon">
-                                <i class="fas fa-check-circle"></i>
-                            </div>
-                            <div class="action-label">Process Payments</div>
+                        <button class="btn btn-primary" id="refresh-transactions">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="transactions-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>User</th>
+                                    <th>Description</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactions-table-body">
+                                <tr>
+                                    <td colspan="6" class="loading">Loading transactions...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Transactions Pagination -->
+                    <div class="pagination" id="transactions-pagination" style="display: none;">
+                        <div class="pagination-info" id="transactions-pagination-info"></div>
+                        <div class="pagination-controls">
+                            <button class="pagination-btn" id="transactions-first-page" disabled>First</button>
+                            <button class="pagination-btn" id="transactions-prev-page" disabled>Prev</button>
+                            <div class="page-numbers" id="transactions-page-numbers"></div>
+                            <button class="pagination-btn" id="transactions-next-page" disabled>Next</button>
+                            <button class="pagination-btn" id="transactions-last-page" disabled>Last</button>
                         </div>
-                        <div class="quick-action" id="quick-send-notification">
-                            <div class="action-icon">
-                                <i class="fas fa-bell"></i>
-                            </div>
-                            <div class="action-label">Send Notification</div>
+                        <select class="pagination-select" id="transactions-page-size">
+                            <option value="10">10 per page</option>
+                            <option value="20" selected>20 per page</option>
+                            <option value="50">50 per page</option>
+                            <option value="100">100 per page</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- System Tab with Download & Restore -->
+                <div class="tab-pane" id="system-tab">
+                    <div class="widget">
+                        <div class="widget-title">
+                            <i class="fas fa-database"></i>
+                            <span>Database Management</span>
                         </div>
-                        <div class="quick-action" id="quick-download-db">
-                            <div class="action-icon">
-                                <i class="fas fa-download"></i>
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div class="detail-row">
+                                <span class="detail-label">Database Status:</span>
+                                <span class="detail-value" id="db-status">Checking...</span>
                             </div>
-                            <div class="action-label">Download DB</div>
+                            <div class="detail-row">
+                                <span class="detail-label">Database Size:</span>
+                                <span class="detail-value" id="db-size">Loading...</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Last Modified:</span>
+                                <span class="detail-value" id="db-modified">Loading...</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Record Counts:</span>
+                                <span class="detail-value" id="db-records">Loading...</span>
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                                <button class="btn btn-info" id="check-db-info">
+                                    <i class="fas fa-info-circle"></i> Check Database
+                                </button>
+                                <button class="btn btn-success" id="download-db-gz">
+                                    <i class="fas fa-file-archive"></i> Download (GZIP)
+                                </button>
+                                <button class="btn btn-primary" id="download-db-zip">
+                                    <i class="fas fa-file-zipper"></i> Download (ZIP)
+                                </button>
+                                <button class="btn btn-secondary" id="download-db-uncompressed">
+                                    <i class="fas fa-database"></i> Download (Uncompressed)
+                                </button>
+                                <button class="btn btn-warning" id="restore-db-btn">
+                                    <i class="fas fa-undo-alt"></i> Restore Database
+                                </button>
+                            </div>
+                            <div class="payment-message" style="background: #fff3cd; border-left-color: #856404;">
+                                <p><strong>⚠️ Restore Warning:</strong> Restoring will replace the current database. 
+                                The system will automatically backup the current database and restart after restore.</p>
+                                <p><strong>Supported formats:</strong> .db, .db.gz, .db.zip, .sqlite, .sqlite3</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="widget">
+                        <div class="widget-title">
+                            <i class="fas fa-cogs"></i>
+                            <span>System Actions</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            <button class="btn btn-warning" onclick="restartGameManager()">
+                                <i class="fas fa-redo"></i> Restart Game Manager
+                            </button>
+                            <button class="btn btn-danger" onclick="clearCache()">
+                                <i class="fas fa-trash"></i> Clear Cache
+                            </button>
+                            <button class="btn btn-primary" onclick="backupDatabase()">
+                                <i class="fas fa-database"></i> Manual Backup
+                            </button>
+                            <button class="btn btn-info" onclick="checkHealth()">
+                                <i class="fas fa-heartbeat"></i> Health Check
+                            </button>
+                            <button class="btn btn-reset-game" onclick="forceResetGame()">
+                                <i class="fas fa-sync-alt"></i> Force Reset Game
+                            </button>
+                            <button class="btn btn-warning" onclick="openFakePlayerSettingsModal()">
+                                <i class="fas fa-robot"></i> Fake Players
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Live Updates -->
-        <div class="live-updates">
-            <div class="widget-title">
-                <i class="fas fa-broadcast-tower"></i>
-                <span>Live System Updates</span>
-                <button class="btn-action btn-view" id="clear-updates" style="margin-left: auto; background: #6c757d;">
-                    <i class="fas fa-trash"></i> Clear
-                </button>
-            </div>
-            <div class="update-list" id="live-updates-list">
-                <div class="update-item">
-                    <div class="update-icon info">
-                        <i class="fas fa-info-circle"></i>
+        
+        <!-- Sidebar -->
+        <div class="admin-sidebar">
+            <!-- Game Status Widget -->
+            <div class="widget">
+                <div class="game-status">
+                    <div class="game-status-icon">
+                        <i class="fas fa-dice"></i>
                     </div>
-                    <div class="update-content">
-                        <div class="update-text">Admin panel loaded successfully</div>
-                        <div class="update-time" id="panel-load-time">Just now</div>
+                    <div class="game-status-text">
+                        <h3 id="current-game-status">No Active Game</h3>
+                        <p id="current-game-info">Start a new game round</p>
+                        <div class="countdown" id="game-countdown">--:--</div>
+                    </div>
+                    <!-- ==================== PRICE TIER SELECTOR FOR GAME CONTROLS ==================== -->
+                    <div style="margin: 10px 0;">
+                        <select id="game-price-selector" class="filter-select" style="width: 100%;">
+                            <option value="10">10 birr (Standard)</option>
+                            <option value="100">100 birr (VIP)</option>
+                        </select>
+                    </div>
+                    <div class="game-controls">
+                        <button class="btn-game-control btn-start" id="start-game-btn">
+                            <i class="fas fa-play"></i> Start New Game
+                        </button>
+                        <button class="btn-game-control btn-stop" id="stop-game-btn" disabled>
+                            <i class="fas fa-stop"></i> Stop Game
+                        </button>
+                        <button class="btn-game-control btn-call" id="call-number-btn" disabled>
+                            <i class="fas fa-bullhorn"></i> Call Number
+                        </button>
+                        <button class="btn-game-control btn-reset" id="force-reset-game-btn" style="background: #ff6b6b;">
+                            <i class="fas fa-sync-alt"></i> Force Reset Game
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions Widget -->
+            <div class="widget">
+                <div class="widget-title">
+                    <i class="fas fa-bolt"></i>
+                    <span>Quick Actions</span>
+                </div>
+                <div class="quick-actions">
+                    <div class="quick-action" id="quick-add-balance">
+                        <div class="action-icon">
+                            <i class="fas fa-plus-circle"></i>
+                        </div>
+                        <div class="action-label">Add Balance</div>
+                    </div>
+                    <div class="quick-action" id="quick-process-payments">
+                        <div class="action-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="action-label">Process Payments</div>
+                    </div>
+                    <div class="quick-action" id="quick-send-notification">
+                        <div class="action-icon">
+                            <i class="fas fa-bell"></i>
+                        </div>
+                        <div class="action-label">Send Notification</div>
+                    </div>
+                    <div class="quick-action" id="quick-download-db">
+                        <div class="action-icon">
+                            <i class="fas fa-download"></i>
+                        </div>
+                        <div class="action-label">Download DB</div>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Footer -->
-        <footer class="admin-footer">
-            <p>vip Bingo Admin Panel v1.0 &copy; 2024</p>
-            <p>System Status: <span id="system-status" class="status-active">Operational</span></p>
-            <p id="last-update">Last updated: Loading...</p>
-        </footer>
     </div>
 
-    <!-- Modals -->
+    <!-- Live Updates -->
+    <div class="live-updates">
+        <div class="widget-title">
+            <i class="fas fa-broadcast-tower"></i>
+            <span>Live System Updates</span>
+            <button class="btn-action btn-view" id="clear-updates" style="margin-left: auto; background: #6c757d;">
+                <i class="fas fa-trash"></i> Clear
+            </button>
+        </div>
+        <div class="update-list" id="live-updates-list">
+            <div class="update-item">
+                <div class="update-icon info">
+                    <i class="fas fa-info-circle"></i>
+                </div>
+                <div class="update-content">
+                    <div class="update-text">Admin panel loaded successfully</div>
+                    <div class="update-time" id="panel-load-time">Just now</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="admin-footer">
+        <p>VIP Bingo Admin Panel v1.0 &copy; 2024</p>
+        <p>System Status: <span id="system-status" class="status-active">Operational</span></p>
+        <p id="last-update">Last updated: Loading...</p>
+    </footer>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- Add Balance Modal -->
     <div class="modal" id="add-balance-modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -3177,7 +3239,7 @@
         </div>
     </div>
 
-    <!-- User Details Modal - FIXED with Paginated Transactions -->
+    <!-- User Details Modal -->
     <div class="modal" id="user-details-modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -3417,7 +3479,7 @@
                                 </tr>
                             </thead>
                             <tbody id="commission-games-body">
-                                <tr><td colspan="7" class="loading">Loading commission data...</td></tr>
+                                <tr><td colspan="9" class="loading">Loading commission data...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3575,7 +3637,7 @@
         </div>
     </div>
 
-    <!-- ==================== NEW: Fake Player Settings Modal ==================== -->
+    <!-- Fake Player Settings Modal -->
     <div class="modal" id="fake-player-settings-modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
@@ -3619,7 +3681,7 @@
         </div>
     </div>
 
-   <script>
+    <script>
     // ==================== GLOBAL VARIABLES ====================
     const urlParams = new URLSearchParams(window.location.search);
     let adminId = urlParams.get('admin_id') || 'Admin';
@@ -3653,6 +3715,25 @@
     let currentTransactionPageSize = 10;
     let userTransactionsTotal = 0;
     let userTransactionsTotalPages = 0;
+
+    // ==================== PRICE TIER HELPERS ====================
+    function getPriceBadge(price) {
+        const priceNum = parseInt(price || 10);
+        if (priceNum >= 100) {
+            return `<span class="price-tag vip">${priceNum} birr VIP</span>`;
+        } else if (priceNum === 20) {
+            return `<span class="price-tag premium">${priceNum} birr</span>`;
+        } else {
+            return `<span class="price-tag standard">${priceNum} birr</span>`;
+        }
+    }
+
+    function getPriceTier(price) {
+        const priceNum = parseInt(price || 10);
+        if (priceNum >= 100) return 'VIP';
+        if (priceNum === 20) return 'Premium';
+        return 'Standard';
+    }
 
     // ==================== AUTHENTICATION CHECK ====================
     function checkAuth() {
@@ -3794,12 +3875,13 @@
         const num = parseFloat(amount);
         return isNaN(num) ? '0.00 birr' : num.toFixed(2) + ' birr';
     }
+
     function setCommissionWithPayable(elementId, commission, payable) {
         const el = document.getElementById(elementId);
-
+        if (!el) return;
         el.innerHTML = `
             <div>${formatCurrency(commission || 0)}</div>
-            <div style="color: var(--danger-color); font-size: 1em;">
+            <div style="color: var(--danger-color); font-size: 0.9em;">
                 ${formatCurrency(payable || 0)}
             </div>
         `;
@@ -4221,30 +4303,32 @@
 
     // ==================== GAME CONTROL FUNCTIONS ====================
     async function forceResetGame() {
-        if (!confirm('⚠️ Are you sure you want to force reset the game? This will terminate any ongoing game and clear the current state.')) {
+        const priceSelector = document.getElementById('game-price-selector');
+        const selectedPrice = priceSelector ? parseInt(priceSelector.value) : 10;
+        
+        if (!confirm(`⚠️ Are you sure you want to force reset the ${selectedPrice} birr game? This will terminate any ongoing game and clear the current state.`)) {
             return;
         }
         
-        showNotification('Attempting to force reset game...', 'info');
+        showNotification(`Attempting to force reset ${selectedPrice} birr game...`, 'info');
         
         try {
             if (currentGame && currentGame.game_id) {
                 const stopResponse = await fetch('/api/admin/stopgame', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ game_id: currentGame.game_id, admin_id: adminData?.id || 'system' })
+                    body: JSON.stringify({ 
+                        game_id: currentGame.game_id, 
+                        admin_id: adminData?.id || 'system',
+                        price: selectedPrice
+                    })
                 });
                 
                 if (stopResponse.ok) {
                     const stopData = await stopResponse.json();
                     if (stopData.success) {
-                        addLiveUpdate('Game stopped successfully', 'success');
-                    } else {
-                        addLiveUpdate('Failed to stop game: ' + (stopData.message || 'Unknown error'), 'warning');
+                        addLiveUpdate(`${selectedPrice} birr game stopped`, 'success');
                     }
-                } else {
-                    const errorText = await stopResponse.text();
-                    addLiveUpdate(`Stop game error (${stopResponse.status}): ${errorText}`, 'warning');
                 }
             }
             
@@ -4253,19 +4337,23 @@
             const startResponse = await fetch('/api/admin/startgame', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ admin_id: adminData?.id || 'system', force: true })
+                body: JSON.stringify({ 
+                    admin_id: adminData?.id || 'system', 
+                    force: true,
+                    price: selectedPrice
+                })
             });
             
             if (startResponse.ok) {
                 const startData = await startResponse.json();
                 
                 if (startData.success) {
-                    showNotification('Game reset and started successfully!', 'success');
-                    addLiveUpdate('Game force reset and started new round', 'success');
+                    showNotification(`${selectedPrice} birr game reset and started successfully!`, 'success');
+                    addLiveUpdate(`${selectedPrice} birr game force reset and started new round`, 'success');
                     await loadGameStatus();
                     await loadGames();
                 } else {
-                    showNotification('Failed to start new game: ' + (startData.message || 'Unknown error'), 'warning');
+                    showNotification(`Failed to start ${selectedPrice} birr game: ${startData.message || 'Unknown error'}`, 'warning');
                 }
             } else {
                 const errorText = await startResponse.text();
@@ -4275,13 +4363,13 @@
         } catch (error) {
             console.error('Error force resetting game:', error);
             showNotification('Error resetting game: ' + error.message, 'danger');
-            addLiveUpdate('Game reset failed: ' + error.message, 'danger');
+            addLiveUpdate(`Game reset failed (${selectedPrice} birr): ${error.message}`, 'danger');
         }
         
         closeModal('reset-game-modal');
     }
 
-    // ==================== USER SEARCH FUNCTIONS - FIXED ====================
+    // ==================== USER SEARCH FUNCTIONS ====================
     async function searchUsers() {
         const searchInput = document.getElementById('user-search');
         if (!searchInput) {
@@ -4307,13 +4395,11 @@
         try {
             showNotification(`Searching for "${query}"...`, 'info');
             
-            // Build URL with proper encoding
             const url = `/api/admin/users/search?q=${encodeURIComponent(query)}&type=${userSearchType}&limit=50`;
             console.log('Search URL:', url);
             
             const response = await fetch(url);
             
-            // Handle 404 gracefully - user not found
             if (response.status === 404) {
                 const data = await response.json();
                 document.getElementById('users-table-body').innerHTML = '<tr><td colspan="8" style="text-align: center;">No users found matching your search</td></tr>';
@@ -4397,13 +4483,11 @@
                 
                 tbody.innerHTML = html;
                 
-                // Hide pagination during search
                 const pagination = document.getElementById('users-pagination');
                 if (pagination) {
                     pagination.style.display = 'none';
                 }
                 
-                // Show search results info
                 if (resultsInfo) {
                     resultsInfo.innerHTML = `🔍 Found ${data.users.length} result(s) for "${query}" in ${userSearchType} fields. <a href="#" onclick="clearUserSearch(); return false;">Clear Search</a>`;
                 }
@@ -4465,7 +4549,6 @@
             if (data && data.stats) {
                 document.getElementById('total-users').textContent = data.stats.total_users || 0;
                 
-                
                 try {
                     const depositsRes = await fetch('/api/admin/payments?status=pending&limit=1');
                     if (depositsRes.ok) {
@@ -4489,12 +4572,9 @@
                 try {
                     const balanceRes = await fetch('/api/admin/totalbalance');
                     if (balanceRes.ok) {
-                       const balanceData = await balanceRes.json();
-                            document.getElementById('total-balance').textContent =
-                                formatCurrency(balanceData.total_balance || 0);
-
-                            document.getElementById('total-deposit').textContent =
-                                formatCurrency(balanceData.total_deposit || 0);
+                        const balanceData = await balanceRes.json();
+                        document.getElementById('total-balance').textContent = formatCurrency(balanceData.total_balance || 0);
+                        document.getElementById('total-deposit').textContent = formatCurrency(balanceData.total_deposit || 0);
                     }
                 } catch (e) {
                     console.warn('Could not load total balance:', e);
@@ -4510,7 +4590,7 @@
             const tbody = document.getElementById('weekly-commission-body');
             if (!tbody) return;
             
-            tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading commission data...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">Loading commission data...</td></tr>';
             
             const response = await fetch('/api/admin/weeklycommission');
             if (!response.ok) {
@@ -4524,8 +4604,8 @@
                 setCommissionWithPayable('last-week-commission', data.last_week_commission, data.last_week_payable);
                 setCommissionWithPayable('this-month-commission', data.this_month_commission, data.this_month_payable);
                 setCommissionWithPayable('total-commission', data.total_commission, data.total_payable);
-                // modified to show total deductable balance
                 document.getElementById('active-games').textContent = data.total_payable || 0;
+                
                 let weeklyData = data.weekly_data || [];
                 if (weeklyData.length > 0) {
                     let html = '';
@@ -4549,7 +4629,7 @@
                     });
                     tbody.innerHTML = html;
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No commission data available</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No commission data available</td></tr>';
                 }
             } else {
                 throw new Error(data.message || 'Failed to load commission data');
@@ -4558,7 +4638,7 @@
             console.error('Error loading weekly commission:', error);
             const tbody = document.getElementById('weekly-commission-body');
             if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center;">Error loading commission data: ${error.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Error loading commission data: ${error.message}</td></tr>`;
             }
         }
     }
@@ -4567,13 +4647,16 @@
         try {
             gamesPage = page;
             const statusFilter = document.getElementById('game-status-filter');
+            const priceFilter = document.getElementById('game-price-filter');
             const searchInput = document.getElementById('game-search');
             
             const statusFilterValue = statusFilter ? statusFilter.value : 'all';
+            const priceFilterValue = priceFilter ? priceFilter.value : 'all';
             const searchTerm = searchInput ? searchInput.value : '';
             
             let url = `/api/admin/games?page=${gamesPage}&limit=${gamesPageSize}`;
             if (statusFilterValue !== 'all') url += `&status=${statusFilterValue}`;
+            if (priceFilterValue !== 'all') url += `&price=${priceFilterValue}`;
             if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
             
             console.log('Fetching games from:', url);
@@ -4584,7 +4667,7 @@
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Error response:', errorText);
-                document.getElementById('games-table-body').innerHTML = `<tr><td colspan="11" style="text-align: center;">Games API Error: ${response.status}</td></tr>`;
+                document.getElementById('games-table-body').innerHTML = `<tr><td colspan="12" style="text-align: center;">Games API Error: ${response.status}</td></tr>`;
                 document.getElementById('games-pagination').style.display = 'none';
                 return;
             }
@@ -4611,10 +4694,14 @@
                             case 'completed': statusClass = 'status-completed'; statusText = 'Completed'; break;
                         }
                         
+                        const price = game.card_price || game.price_tier || 10;
+                        const priceBadge = getPriceBadge(price);
+                        
                         html += `
                             <tr>
                                 <td><code>${game.game_id ? game.game_id.substring(0, 8) + '...' : 'N/A'}</code></td>
                                 <td><strong>${game.round_number || 1}</strong></td>
+                                <td>${priceBadge}</td>
                                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                                 <td><strong>${game.total_players || 0}</strong></td>
                                 <td><strong>${formatCurrency(game.prize_pool || 0)}</strong></td>
@@ -4646,15 +4733,15 @@
                         updatePaginationNumbers('games', gamesPage, gamesTotalPages, loadGames);
                     }
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="11" style="text-align: center;">No games found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">No games found</td></tr>';
                     if (document.getElementById('games-pagination')) document.getElementById('games-pagination').style.display = 'none';
                 }
             } else {
-                tbody.innerHTML = '<tr><td colspan="11" style="text-align: center;">Failed to load games: ' + (data.message || 'Unknown error') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">Failed to load games: ' + (data.message || 'Unknown error') + '</td></tr>';
             }
         } catch (error) {
             console.error('Error loading games:', error);
-            document.getElementById('games-table-body').innerHTML = '<tr><td colspan="11" style="text-align: center;">Error loading games: ' + error.message + '</td></tr>';
+            document.getElementById('games-table-body').innerHTML = '<tr><td colspan="12" style="text-align: center;">Error loading games: ' + error.message + '</td></tr>';
         }
     }
 
@@ -4662,7 +4749,6 @@
         try {
             usersPage = page;
             
-            // If in search mode, don't load regular users
             if (isSearchMode) {
                 const pagination = document.getElementById('users-pagination');
                 if (pagination) {
@@ -4977,7 +5063,6 @@
             transactionsPage = page;
             currentTransactionType = typeFilter;
             
-            // Update active tab
             document.querySelectorAll('.transaction-tab-btn').forEach(tab => {
                 tab.classList.remove('active');
                 if (tab.dataset.transactionType === typeFilter) {
@@ -5000,7 +5085,6 @@
                 const errorText = await response.text();
                 console.error('Error response:', errorText);
                 
-                // Try to parse error message
                 try {
                     const errorData = JSON.parse(errorText);
                     document.getElementById('transactions-table-body').innerHTML = `<tr><td colspan="6" style="text-align: center;">${errorData.message || 'Error loading transactions'}</td></tr>`;
@@ -5069,10 +5153,9 @@
 
     async function loadCommissionDetails() {
         try {
-            // Load games commission
             const gamesTbody = document.getElementById('commission-games-body');
             if (gamesTbody) {
-                gamesTbody.innerHTML = '<tr><td colspan="7" class="loading">Loading commission data...</td></tr>';
+                gamesTbody.innerHTML = '<tr><td colspan="9" class="loading">Loading commission data...</td></tr>';
                 
                 const response = await fetch('/api/admin/commission-details');
                 if (!response.ok) {
@@ -5101,10 +5184,9 @@
                         });
                         gamesTbody.innerHTML = html;
                     } else {
-                        gamesTbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No commission data available</td></tr>';
+                        gamesTbody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No commission data available</td></tr>';
                     }
                     
-                    // Load daily commission
                     if (data.daily && data.daily.length > 0) {
                         const dailyTbody = document.getElementById('commission-daily-body');
                         let dailyHtml = '';
@@ -5123,7 +5205,6 @@
                         dailyTbody.innerHTML = dailyHtml;
                     }
                     
-                    // Load monthly commission
                     if (data.monthly && data.monthly.length > 0) {
                         const monthlyTbody = document.getElementById('commission-monthly-body');
                         let monthlyHtml = '';
@@ -5147,19 +5228,21 @@
             console.error('Error loading commission details:', error);
             const gamesTbody = document.getElementById('commission-games-body');
             if (gamesTbody) {
-                gamesTbody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Error loading commission data: ${error.message}</td></tr>`;
+                gamesTbody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Error loading commission data: ${error.message}</td></tr>`;
             }
         }
     }
 
     async function loadGameStatus() {
         try {
-            const response = await fetch('/api/game/active');
+            const priceSelector = document.getElementById('game-price-selector');
+            const selectedPrice = priceSelector ? parseInt(priceSelector.value) : 10;
             
-            // Handle 404 gracefully - no active game
+            const response = await fetch(`/api/game/active/${selectedPrice}`);
+            
             if (response.status === 404) {
-                document.getElementById('current-game-status').textContent = 'No Active Game';
-                document.getElementById('current-game-info').textContent = 'Start a new game round';
+                document.getElementById('current-game-status').textContent = `No Active Game (${selectedPrice} birr)`;
+                document.getElementById('current-game-info').textContent = `Start a new game round for ${selectedPrice} birr tier`;
                 document.getElementById('game-countdown').textContent = '--:--';
                 
                 document.getElementById('start-game-btn').disabled = false;
@@ -5170,7 +5253,7 @@
             
             if (!response.ok) {
                 console.warn('Game status API returned', response.status);
-                document.getElementById('current-game-status').textContent = 'API Not Available';
+                document.getElementById('current-game-status').textContent = `API Not Available (${selectedPrice} birr)`;
                 document.getElementById('current-game-info').textContent = 'Cannot connect to game API';
                 document.getElementById('game-countdown').textContent = '--:--';
                 return;
@@ -5180,8 +5263,15 @@
             
             if (data.success) {
                 currentGame = data;
-                document.getElementById('current-game-status').textContent = data.game_id ? `Game #${data.round_number || 1} - ${data.status}` : 'No Active Game';
-                document.getElementById('current-game-info').textContent = data.game_id ? `${data.total_players || 0} players, Prize: ${formatCurrency(data.prize_pool || 0)}` : 'Start a new game round';
+                const price = data.card_price || selectedPrice;
+                const priceBadge = getPriceBadge(price);
+                
+                document.getElementById('current-game-status').textContent = data.game_id ? 
+                    `${priceBadge} Game #${data.round_number || 1} - ${data.status}` : 
+                    `No Active Game (${price} birr)`;
+                document.getElementById('current-game-info').textContent = data.game_id ? 
+                    `${data.total_players || 0} players, Prize: ${formatCurrency(data.prize_pool || 0)}` : 
+                    `Start a new game round for ${price} birr tier`;
                 document.getElementById('game-countdown').textContent = data.countdown_remaining ? `${data.countdown_remaining}s` : '--:--';
                 
                 document.getElementById('start-game-btn').disabled = !!data.game_id;
@@ -5194,7 +5284,7 @@
                     const minutesPassed = (now - createdTime) / (1000 * 60);
                     
                     if (minutesPassed > 10) {
-                        showNotification('⚠️ Game appears to be stuck in winner_display. Use Force Reset if needed.', 'warning');
+                        showNotification(`⚠️ Game appears to be stuck in winner_display for ${price} birr tier. Use Force Reset if needed.`, 'warning');
                     }
                 }
             }
@@ -5203,7 +5293,7 @@
         }
     }
 
-    // ==================== USER TRANSACTION FUNCTIONS - FIXED ====================
+    // ==================== USER TRANSACTION FUNCTIONS ====================
     async function loadUserTransactions(userId, page = 1) {
         if (!userId) return;
         
@@ -5211,7 +5301,6 @@
         currentTransactionPage = page;
         currentTransactionPageSize = parseInt(document.getElementById('user-trans-page-size').value);
         
-        // Show loading state
         document.getElementById('user-transactions-body').innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading transactions...</td></tr>';
         
         try {
@@ -5227,18 +5316,14 @@
                 userTransactionsTotal = data.pagination?.total || 0;
                 userTransactionsTotalPages = data.pagination?.pages || Math.ceil(userTransactionsTotal / currentTransactionPageSize);
                 
-                // Update pagination info
                 document.getElementById('user-trans-info').textContent = 
                     `Page ${page} of ${userTransactionsTotalPages || 1}`;
                 
-                // Enable/disable prev/next buttons
                 document.getElementById('user-trans-prev').disabled = page === 1;
                 document.getElementById('user-trans-next').disabled = page === userTransactionsTotalPages || userTransactionsTotalPages === 0;
                 
-                // Show transactions section
                 document.getElementById('user-transactions-section').style.display = 'block';
                 
-                // Render transactions table
                 const tbody = document.getElementById('user-transactions-body');
                 
                 if (data.transactions && data.transactions.length > 0) {
@@ -5271,7 +5356,7 @@
         }
     }
 
-    // ==================== FAKE PLAYER SETTINGS FUNCTIONS - NEW ====================
+    // ==================== FAKE PLAYER SETTINGS FUNCTIONS ====================
     async function openFakePlayerSettingsModal() {
         await loadFakePlayerSettings();
         openModal('fake-player-settings-modal');
@@ -5343,7 +5428,7 @@
         }
     }
 
-    // ==================== VIEW FUNCTIONS - POPUP MODALS ====================
+    // ==================== VIEW FUNCTIONS ====================
     async function openViewGameModal(gameId) {
         try {
             showNotification(`Loading game ${gameId} details...`, 'info');
@@ -5357,6 +5442,8 @@
             
             if (data.success) {
                 const game = data.game;
+                const price = game.card_price || 10;
+                const priceBadge = getPriceBadge(price);
                 
                 let html = `
                     <div class="detail-row">
@@ -5366,6 +5453,10 @@
                     <div class="detail-row">
                         <span class="detail-label">Round:</span>
                         <span class="detail-value">${game.round_number || 1}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Price Tier:</span>
+                        <span class="detail-value">${priceBadge}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Status:</span>
@@ -5483,14 +5574,12 @@
                 
                 document.getElementById('user-details-content').innerHTML = html;
                 
-                // Reset transaction pagination and load first page
                 currentTransactionUserId = userId;
                 currentTransactionPage = 1;
                 await loadUserTransactions(userId, 1);
                 
                 const actionSection = document.getElementById('user-details-modal').querySelector('.form-actions');
                 if (actionSection) {
-                    // Remove existing action buttons except close
                     while (actionSection.children.length > 1) {
                         actionSection.removeChild(actionSection.children[0]);
                     }
@@ -5895,17 +5984,24 @@
     }
     
     function stopGame(gameId) { 
-        if (!confirm('Stop this game?')) return;
+        const priceSelector = document.getElementById('game-price-selector');
+        const selectedPrice = priceSelector ? parseInt(priceSelector.value) : 10;
+        
+        if (!confirm(`Stop the ${selectedPrice} birr game?`)) return;
         
         fetch('/api/admin/stopgame', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ game_id: gameId, admin_id: adminData?.id || 'system' })
+            body: JSON.stringify({ 
+                game_id: gameId, 
+                admin_id: adminData?.id || 'system',
+                price: selectedPrice
+            })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showNotification(`Game ${gameId} stopped!`, 'success');
+                showNotification(`Game ${gameId} (${selectedPrice} birr) stopped!`, 'success');
                 loadGames();
                 loadGameStatus();
             } else {
@@ -5920,6 +6016,89 @@
     function openAddBalanceModal(userId) { 
         document.getElementById('balance-user-id').value = userId;
         openModal('add-balance-modal'); 
+    }
+
+    async function startGame() {
+        try {
+            const priceSelector = document.getElementById('game-price-selector');
+            const selectedPrice = priceSelector ? parseInt(priceSelector.value) : 10;
+            
+            showNotification(`Starting new ${selectedPrice} birr game...`, 'info');
+            const response = await fetch('/api/admin/startgame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    admin_id: adminData?.id || 'system',
+                    price: selectedPrice
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server error (${response.status}): ${errorText}`);
+            }
+            
+            const data = await response.json();
+            if (data.success) {
+                showNotification(`${selectedPrice} birr game started!`, 'success');
+                addLiveUpdate(`New ${selectedPrice} birr game started`);
+                await loadGameStatus();
+                await loadGames();
+            } else {
+                showNotification('Failed to start game: ' + (data.message || 'Unknown error'), 'danger');
+                addLiveUpdate('Game start failed: ' + (data.message || 'Unknown error'), 'danger');
+            }
+        } catch (error) {
+            console.error('Error starting game:', error);
+            showNotification('Error starting game: ' + error.message, 'danger');
+        }
+    }
+
+    async function callNumber() {
+        const number = document.getElementById('number-to-call').value;
+        if (!number || number < 1 || number > 75) {
+            showNotification('Enter a valid number 1-75', 'warning');
+            return;
+        }
+        if (!currentGame?.game_id) {
+            showNotification('No active game to call number', 'warning');
+            return;
+        }
+        
+        const priceSelector = document.getElementById('game-price-selector');
+        const selectedPrice = priceSelector ? parseInt(priceSelector.value) : 10;
+        
+        try {
+            showNotification(`Calling number ${number} (${selectedPrice} birr tier)...`, 'info');
+            const response = await fetch('/api/admin/callnumber', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    game_id: currentGame.game_id, 
+                    number: parseInt(number), 
+                    admin_id: adminData?.id || 'system',
+                    price: selectedPrice
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server error (${response.status}): ${errorText}`);
+            }
+            
+            const data = await response.json();
+            if (data.success) {
+                showNotification(`Number ${number} called (${selectedPrice} birr tier)!`, 'success');
+                addLiveUpdate(`Called number ${number} (${selectedPrice} birr tier)`);
+                closeModal('call-number-modal');
+                await loadGameStatus();
+            } else {
+                showNotification('Failed to call number: ' + (data.message || 'Unknown error'), 'danger');
+            }
+        } catch (error) {
+            console.error('Error calling number:', error);
+            showNotification('Error calling number: ' + error.message, 'danger');
+        }
     }
 
     // ==================== SYSTEM FUNCTIONS ====================
@@ -5992,6 +6171,16 @@
         updateTime();
         setInterval(updateTime, 1000);
         
+        // ==================== PRICE SELECTOR CHANGE HANDLER ====================
+        document.getElementById('game-price-selector')?.addEventListener('change', function() {
+            loadGameStatus();
+        });
+        
+        document.getElementById('game-price-filter')?.addEventListener('change', function() {
+            gamesPage = 1;
+            loadGames();
+        });
+        
         loadStats();
         loadWeeklyCommission();
         loadGames();
@@ -6011,7 +6200,7 @@
                 if (this.dataset.tab === 'system') checkDatabaseInfo();
                 else if (this.dataset.tab === 'games') loadGames();
                 else if (this.dataset.tab === 'users') {
-                    clearUserSearch(); // Clear search when switching tabs
+                    clearUserSearch();
                     loadUsers();
                 }
                 else if (this.dataset.tab === 'payments') {
@@ -6227,120 +6416,17 @@
             }
         });
         
-        document.getElementById('start-game-btn')?.addEventListener('click', async () => {
-            try {
-                showNotification('Starting new game...', 'info');
-                const response = await fetch('/api/admin/startgame', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ admin_id: adminData?.id || 'system' })
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error (${response.status}): ${errorText}`);
-                }
-                
-                const data = await response.json();
-                if (data.success) {
-                    showNotification('Game started!', 'success');
-                    addLiveUpdate('New game started');
-                    await loadGameStatus();
-                    await loadGames();
-                } else {
-                    showNotification('Failed to start game: ' + (data.message || 'Unknown error'), 'danger');
-                    addLiveUpdate('Game start failed: ' + (data.message || 'Unknown error'), 'danger');
-                }
-            } catch (error) {
-                console.error('Error starting game:', error);
-                showNotification('Error starting game: ' + error.message, 'danger');
-            }
-        });
-        
-        document.getElementById('stop-game-btn')?.addEventListener('click', async () => {
+        // ==================== GAME CONTROL BUTTONS ====================
+        document.getElementById('start-game-btn')?.addEventListener('click', startGame);
+        document.getElementById('stop-game-btn')?.addEventListener('click', () => {
             if (!currentGame?.game_id) {
                 showNotification('No active game to stop', 'warning');
                 return;
             }
-            
-            if (!confirm('Stop the current game?')) return;
-            
-            try {
-                showNotification('Stopping game...', 'info');
-                const response = await fetch('/api/admin/stopgame', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ game_id: currentGame.game_id, admin_id: adminData?.id || 'system' })
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error (${response.status}): ${errorText}`);
-                }
-                
-                const data = await response.json();
-                if (data.success) {
-                    showNotification('Game stopped!', 'success');
-                    addLiveUpdate('Game stopped');
-                    await loadGameStatus();
-                    await loadGames();
-                    
-                    setTimeout(async () => {
-                        const checkResponse = await fetch('/api/game/active');
-                        if (checkResponse.ok) {
-                            const checkData = await checkResponse.json();
-                            if (!checkData.success || !checkData.game_id) {
-                                showNotification('Game is ready to start a new round', 'info');
-                            }
-                        }
-                    }, 2000);
-                } else {
-                    showNotification('Failed to stop game: ' + (data.message || 'Unknown error'), 'danger');
-                    addLiveUpdate('Game stop failed: ' + (data.message || 'Unknown error'), 'danger');
-                }
-            } catch (error) {
-                console.error('Error stopping game:', error);
-                showNotification('Error stopping game: ' + error.message, 'danger');
-            }
+            stopGame(currentGame.game_id);
         });
-        
         document.getElementById('call-number-btn')?.addEventListener('click', () => openModal('call-number-modal'));
-        
-        document.getElementById('submit-call-number')?.addEventListener('click', async () => {
-            const number = document.getElementById('number-to-call').value;
-            if (!number || number < 1 || number > 75) {
-                showNotification('Enter a valid number 1-75', 'warning');
-                return;
-            }
-            if (!currentGame?.game_id) return;
-            
-            try {
-                showNotification(`Calling number ${number}...`, 'info');
-                const response = await fetch('/api/admin/callnumber', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ game_id: currentGame.game_id, number: parseInt(number), admin_id: adminData?.id || 'system' })
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error (${response.status}): ${errorText}`);
-                }
-                
-                const data = await response.json();
-                if (data.success) {
-                    showNotification(`Number ${number} called!`, 'success');
-                    addLiveUpdate(`Called number ${number}`);
-                    closeModal('call-number-modal');
-                    await loadGameStatus();
-                } else {
-                    showNotification('Failed to call number: ' + (data.message || 'Unknown error'), 'danger');
-                }
-            } catch (error) {
-                console.error('Error calling number:', error);
-                showNotification('Error calling number: ' + error.message, 'danger');
-            }
-        });
+        document.getElementById('submit-call-number')?.addEventListener('click', callNumber);
         
         document.getElementById('submit-add-balance')?.addEventListener('click', async () => {
             const userId = document.getElementById('balance-user-id').value;
@@ -6433,7 +6519,7 @@
             loadGameStatus();
         }, 30000);
         
-        addLiveUpdate('Admin panel initialized');
+        addLiveUpdate('Admin panel initialized with multi-tier support');
         showNotification('Admin panel loaded!', 'success');
     }
 
