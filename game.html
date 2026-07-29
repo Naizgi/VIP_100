@@ -105,6 +105,17 @@
         flex-direction: column;
         justify-content: center;
         border: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .stat-item:hover {
+        background: rgba(255, 0, 0, 0.15);
+        border-color: var(--secondary);
+    }
+    
+    .stat-item:active {
+        transform: scale(0.95);
     }
     
     .stat-label {
@@ -118,6 +129,21 @@
         font-weight: 600;
         color: var(--secondary) !important;
         transition: color 0.1s ease;
+    }
+    
+    /* Leave button stat item */
+    .stat-item.leave-stat {
+        border-color: rgba(255, 0, 0, 0.3);
+    }
+    
+    .stat-item.leave-stat .stat-value {
+        color: #ff6b6b !important;
+        font-size: 16px;
+    }
+    
+    .stat-item.leave-stat .stat-label {
+        color: #ff6b6b;
+        opacity: 0.7;
     }
     
     .countdown-timer {
@@ -1288,41 +1314,6 @@
         text-align: center;
         padding: 20px;
       }
-
-
-/* Leave Button Styles */
-.leave-btn {
-    background: rgba(255,0,0,0.2);
-    color: #ff6b6b;
-    border: 1px solid #ff6b6b;
-    padding: 8px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 13px;
-    font-family: 'Poppins', sans-serif;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.leave-btn:hover {
-    background: rgba(255,0,0,0.3);
-    transform: scale(1.02);
-}
-
-.leave-btn:active {
-    transform: scale(0.98);
-}
-
-.leave-container {
-    text-align: center;
-    margin-top: 12px;
-    padding: 0 10px;
-}
-
-
-
     
     @media (max-width: 767px) {
         .container {
@@ -1835,12 +1826,11 @@
             <!-- REMOVED: new-round-banner -->
             
             <div class="game-stats">
-
-                <div class="leave-container">
-              <button class="leave-btn" onclick="leaveGame()">
-                  <i class="fas fa-sign-out-alt"></i> Leave Game
-              </button>
-          </div>
+                <!-- Leave Button as Stat Item - LEFT SIDE -->
+                <div class="stat-item leave-stat" onclick="leaveGame()" style="cursor: pointer;">
+                    <div class="stat-label">Exit</div>
+                    <div class="stat-value"><i class="fas fa-sign-out-alt"></i></div>
+                </div>
 
                 <div class="stat-item">
                     <div class="stat-label">Countdown</div>
@@ -1917,23 +1907,16 @@
                 </div>
             </div>
         </div>
-
-
-
-
-        <!-- LEAVE BUTTON - Waiting Screen -->
-        <div class="leave-container">
-            <button class="leave-btn" onclick="leaveGame()">
-                <i class="fas fa-sign-out-alt"></i> Leave Game
-            </button>
-        </div>
-
-
-
         
         <!-- Screen 2: Active Game -->
         <div id="game-screen" class="screen">
             <div class="game-stats" style="grid-template-columns: repeat(4, 1fr);">
+                <!-- Leave Button as Stat Item - LEFT SIDE -->
+                <div class="stat-item leave-stat" onclick="leaveGame()" style="cursor: pointer;">
+                    <div class="stat-label">Exit</div>
+                    <div class="stat-value"><i class="fas fa-sign-out-alt"></i></div>
+                </div>
+                
                 <div class="stat-item">
                     <div class="stat-label">Derash</div>
                     <div class="stat-value" id="game-prize-pool">0 birr</div>
@@ -2019,21 +2002,6 @@
             </div>
         </div>
     </div>
-
-
-
-
-    <!-- LEAVE BUTTON - Game Screen -->
-    <div class="leave-container">
-        <button class="leave-btn" onclick="leaveGame()">
-            <i class="fas fa-sign-out-alt"></i> Leave Game
-        </button>
-    </div>
-
-
-
-
-
 
     <script>
       // ==================== CONFIGURATION ====================
