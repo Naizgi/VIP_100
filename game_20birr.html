@@ -2014,7 +2014,7 @@
     </div>
 
     <script>
-  // ==================== CONFIGURATION ====================
+   // ==================== CONFIGURATION ====================
   const API_BASE_URL = `${window.location.protocol}//${window.location.host}/api`;
   const WS_BASE_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
   
@@ -2726,7 +2726,7 @@
     } else {
       try {
         const response = await fetch(
-          `${API_BASE_URL}/game/${gameState.gameId}/claim-bingo`,
+          `${API_BASE_URL}/game/${gameState.gameId}/claim-bingo/${gameState.priceTier}`,
           {
             method: "POST",
             headers: {
