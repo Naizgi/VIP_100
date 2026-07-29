@@ -4050,10 +4050,10 @@ async def main():
     print(f"🔑 CBE Birr API Key: {'Configured' if CBE_BIRR_API_KEY else 'Not Configured'}")
     print(f"🎮 Game Mode: Round-Based Only")
     print(f"👑 Admins: {len(ADMIN_IDS)} configured")
-    print(f"🌐 Web Interface: http://{WEBSERVER_HOST}:{WEBSERVER_PORT}/game.html")
+    print(f"🌐 Web Interface: http://{WEBSERVER_HOST}:{WEBSERVER_PORT}/index.html")
     print(f"🛡️ Admin Panel: http://{WEBSERVER_HOST}:{WEBSERVER_PORT}/admin.html")
     if WEB_APP_URL:
-        print(f"🌍 Public URL: {WEB_APP_URL}/game.html")
+        print(f"🌍 Public URL: {WEB_APP_URL}/index.html")
         print(f"🛡️ Admin URL: {WEB_APP_URL}/admin.html")
     print(f"✅ Status: Ready with enhanced features")
     print("="*60 + "\n")
