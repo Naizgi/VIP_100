@@ -2840,11 +2840,14 @@ class Database:
                                     current_phase: str = 'card_purchase',
                                     countdown_end: datetime = None,
                                     purchase_end_time: datetime = None,
-                                    card_price: float = 10.00) -> Optional[str]:
+                                    card_price: float = 10.00,
+                                    game_id: str = None) -> Optional[str]:
         """Create a new round-based game with dynamic card price"""
         import uuid
         
-        game_id = f"ROUND_{round_number}_{uuid.uuid4().hex[:8].upper()}"
+        # ==================== FIX: Use provided game_id or generate one ====================
+        if game_id is None:
+            game_id = f"ROUND_{round_number}_{uuid.uuid4().hex[:8].upper()}"
         
         try:
             # Set default values if not provided
