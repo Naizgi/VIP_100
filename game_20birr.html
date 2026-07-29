@@ -1288,6 +1288,44 @@
         text-align: center;
         padding: 20px;
       }
+
+
+/* Leave Button Styles */
+.leave-btn {
+    background: rgba(255,0,0,0.2);
+    color: #ff6b6b;
+    border: 1px solid #ff6b6b;
+    padding: 8px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Poppins', sans-serif;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.leave-btn:hover {
+    background: rgba(255,0,0,0.3);
+    transform: scale(1.02);
+}
+
+.leave-btn:active {
+    transform: scale(0.98);
+}
+
+.leave-container {
+    text-align: center;
+    margin-top: 12px;
+    padding: 0 10px;
+}
+
+
+
+
+
+
     
     @media (max-width: 767px) {
         .container {
@@ -1875,6 +1913,16 @@
                 </div>
             </div>
         </div>
+
+
+
+        <!-- LEAVE BUTTON - Waiting Screen -->
+        <div class="leave-container">
+            <button class="leave-btn" onclick="leaveGame()">
+                <i class="fas fa-sign-out-alt"></i> Leave Game
+            </button>
+        </div>
+
         
         <!-- Screen 2: Active Game -->
         <div id="game-screen" class="screen">
@@ -1964,6 +2012,17 @@
             </div>
         </div>
     </div>
+
+<!-- LEAVE BUTTON - Game Screen -->
+    <div class="leave-container">
+        <button class="leave-btn" onclick="leaveGame()">
+            <i class="fas fa-sign-out-alt"></i> Leave Game
+        </button>
+    </div>
+
+
+
+
 
     <script>
       // ==================== CONFIGURATION ====================
@@ -6615,6 +6674,68 @@
           }
         });
       });
+
+
+
+
+// ==================== LEAVE GAME FUNCTION ====================
+function leaveGame() {
+    console.log("Leaving game, redirecting to index.html...");
+
+    // Stop all intervals
+    if (gameState.countdownInterval) {
+        clearInterval(gameState.countdownInterval);
+        gameState.countdownInterval = null;
+    }
+    if (gameState.numberCallInterval) {
+        clearInterval(gameState.numberCallInterval);
+        gameState.numberCallInterval = null;
+    }
+    if (gameState.syncInterval) {
+        clearInterval(gameState.syncInterval);
+        gameState.syncInterval = null;
+    }
+    if (gameState.pingInterval) {
+        clearInterval(gameState.pingInterval);
+        gameState.pingInterval = null;
+    }
+    if (gameState.winnerDisplayInterval) {
+        clearInterval(gameState.winnerDisplayInterval);
+        gameState.winnerDisplayInterval = null;
+    }
+    if (gameState.staggeredAnimationInterval) {
+        clearInterval(gameState.staggeredAnimationInterval);
+        gameState.staggeredAnimationInterval = null;
+    }
+
+    // Stop all audio
+    stopAllAudio();
+
+    // Close WebSocket connection
+    if (gameState.websocket) {
+        if (gameState.websocket.readyState === WebSocket.OPEN) {
+            gameState.websocket.onclose = null;
+            gameState.websocket.close();
+        }
+        gameState.isConnected = false;
+    }
+
+    // Get the current user ID for the redirect
+    const userId = gameState.userId || getUserId();
+
+    // Redirect to index.html with the same user_id
+    const redirectUrl = `/index.html?user_id=${userId}`;
+    console.log(`Redirecting to: ${redirectUrl}`);
+
+    // Small delay to allow cleanup
+    setTimeout(() => {
+        window.location.href = redirectUrl;
+    }, 300);
+}
+window.leaveGame = leaveGame;
+
+
+
     </script>
 </body>
 </html>
