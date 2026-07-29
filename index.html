@@ -443,7 +443,7 @@
             }
         }
 
-        // ==================== SELECT GAME ====================
+        // ==================== SELECT GAME - REDIRECTS TO CORRECT GAME PAGE ====================
         function selectGame(price) {
             console.log(`Selected game with card price: ${price} birr`);
 
@@ -499,8 +499,18 @@
                 return;
             }
 
-            // Redirect to game.html with the price parameter
-            const gameUrl = `/game?price=${price}&user_id=${userId}`;
+            // Determine which game page to redirect to based on price
+            let gamePage;
+            if (price === 10) {
+                gamePage = '/game.html';  // 10 birr game (default)
+            } else if (price === 100) {
+                gamePage = '/game_20birr.html';  // 20 birr game (100 birr VIP)
+            } else {
+                gamePage = '/game.html';  // fallback
+            }
+
+            // Redirect to the appropriate game page with the price parameter
+            const gameUrl = `${gamePage}?price=${price}&user_id=${userId}`;
             console.log(`Redirecting to: ${gameUrl}`);
             
             // Small delay to show selection feedback
@@ -511,9 +521,9 @@
 
         // ==================== KEYBOARD SHORTCUTS ====================
         document.addEventListener('keydown', function(e) {
-            if (e.key === '1' || e.key === '1') {
+            if (e.key === '1') {
                 selectGame(10);
-            } else if (e.key === '2' || e.key === '2') {
+            } else if (e.key === '2') {
                 selectGame(100);
             }
         });
