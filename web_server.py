@@ -1,4 +1,4 @@
-# web_server.py - Fixed time synchronization logic
+# web_server.py - Fixed time synchronization logic with Multi-Tier Support
 # FIXED COUNTDOWN SYNCHRONIZATION
 # FIXED: Removed duplicate winner_confirmed message to prevent data conflict
 # FIXED: Bingo claim race condition with 4 corners priority
@@ -16,6 +16,9 @@
 # FIXED: Start game endpoint to handle edge cases
 # ADDED: User search API for admin panel - FIXED to work properly
 # ADDED: Transaction filtering API for deposits and withdrawals
+# ADDED: Multi-tier support for 10 birr and 100 birr (VIP) games
+# ADDED: Price-aware endpoints for game state, card purchase, and bingo claims
+# ADDED: Game manager factory integration for separate game instances per price tier
 
 from aiohttp import web
 import json
@@ -34,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 WEBSERVER_HOST = os.getenv('WEBSERVER_HOST', '0.0.0.0')
-WEBSERVER_PORT = int(os.getenv('WEBSERVER_PORT', '8081'))
+WEBSERVER_PORT = int(os.getenv('WEBSERVER_PORT', '8082'))
 WEB_APP_URL = f"http://{WEBSERVER_HOST}:{WEBSERVER_PORT}"
 
 # Fix for Windows socket issues
@@ -206,17 +209,21 @@ class ValidationWebSocketServer:
             
             # FIX: Get active game info immediately
             try:
-                from utils.game_manager import game_manager
-                active_game = await game_manager.get_active_round_game()
-                if active_game:
-                    await self._safe_send_async(ws, {
-                        'type': 'active_game_info',
-                        'game_id': active_game.get('game_id'),
-                        'status': active_game.get('status', 'card_purchase'),
-                        'phase': active_game.get('current_phase', 'card_purchase'),
-                        'round_number': active_game.get('round_number', 1),
-                        'timestamp': datetime.now().isoformat()
-                    })
+                from utils.game_manager_factory import game_manager_factory
+                all_games = await game_manager_factory.get_all_active_games()
+                if all_games:
+                    # Send info for each active game
+                    for price, game in all_games.items():
+                        if game:
+                            await self._safe_send_async(ws, {
+                                'type': 'active_game_info',
+                                'game_id': game.get('game_id'),
+                                'status': game.get('status', 'card_purchase'),
+                                'phase': game.get('current_phase', 'card_purchase'),
+                                'round_number': game.get('round_number', 1),
+                                'card_price': price,
+                                'timestamp': datetime.now().isoformat()
+                            })
             except Exception as e:
                 logger.debug(f"Error sending active game info: {e}")
             
@@ -281,7 +288,7 @@ class ValidationWebSocketServer:
             elif msg_type == 'request_sync':
                 await self._handle_request_sync(data)
             elif msg_type == 'get_active_game':  # NEW: Request active game info
-                await self._handle_get_active_game(ws)
+                await self._handle_get_active_game(ws, data)
             elif msg_type == 'client_sync':  # NEW: Client sync message with countdown
                 await self._handle_client_sync(ws, data)
             elif msg_type == 'test_bingo':  # NEW: Test bingo verification
@@ -332,23 +339,27 @@ class ValidationWebSocketServer:
             user_id = data.get('user_id')
             game_id = data.get('game_id')
             client_countdown = data.get('countdown', 30)
+            price = data.get('price', 10)
             
             if not user_id or not game_id:
                 return
             
-            # Get server countdown
-            server_countdown = await self.get_server_countdown_for_game(game_id)
+            # Get server countdown from the correct manager
+            from utils.game_manager_factory import game_manager_factory
+            manager = game_manager_factory.get_manager(price)
+            server_countdown = await self.get_server_countdown_for_game(game_id, price)
             
             # Log any significant differences
             diff = abs(server_countdown - client_countdown)
             if diff > 2:  # If difference is more than 2 seconds
-                logger.info(f"Countdown correction for game {game_id}: client {client_countdown}s, server {server_countdown}s")
+                logger.info(f"Countdown correction for game {game_id} ({price} birr tier): client {client_countdown}s, server {server_countdown}s")
             
             # Send correction if needed
             if diff > 5:  # If difference is more than 5 seconds
                 await self.send_to_user(str(user_id), {
                     'type': 'countdown_correction',
                     'game_id': game_id,
+                    'card_price': price,
                     'server_countdown': server_countdown,
                     'client_countdown': client_countdown,
                     'difference': diff,
@@ -363,6 +374,7 @@ class ValidationWebSocketServer:
         """Handle immediate bingo claim with priority for 4 corners"""
         game_id = data.get('game_id')
         user_id = data.get('user_id')
+        price = data.get('price', 10)  # Get price tier
         
         if not game_id or not user_id:
             return
@@ -370,18 +382,21 @@ class ValidationWebSocketServer:
         # Use dedicated bingo claim lock to prevent race conditions
         async with self._bingo_claim_lock:
             try:
+                from utils.game_manager_factory import game_manager_factory
                 
-                from utils.game_manager import game_manager
+                logger.info(f"🚨 IMMEDIATE BINGO CLAIM from user {user_id} in game {game_id} ({price} birr tier)")
                 
-                logger.info(f"🚨 IMMEDIATE BINGO CLAIM from user {user_id} in game {game_id}")
+                # Get the correct game manager for this price tier
+                manager = game_manager_factory.get_manager(price)
                 
-                # Get game status immediately using game_manager
+                # Get game status immediately
                 game = await Database.get_game(game_id)
                 if not game or game.get('status') != 'active':
                     logger.warning(f"Game {game_id} not active for bingo claim")
                     await self.send_to_user(str(user_id), {
                         'type': 'bingo_rejected',
                         'reason': 'Game not active',
+                        'card_price': price,
                         'timestamp': datetime.now().isoformat()
                     })
                     return
@@ -393,6 +408,7 @@ class ValidationWebSocketServer:
                     await self.send_to_user(str(user_id), {
                         'type': 'bingo_rejected',
                         'reason': 'No active card found',
+                        'card_price': price,
                         'timestamp': datetime.now().isoformat()
                     })
                     return
@@ -401,7 +417,7 @@ class ValidationWebSocketServer:
                 called_numbers = await Database.get_drawn_numbers(game_id)
                 
                 # Use game_manager's fast verification with 4 corners priority
-                has_bingo, winning_pattern, pattern_type = await game_manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
+                has_bingo, winning_pattern, pattern_type = await manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
                 
                 logger.info(f"⚡ BINGO VERIFICATION RESULT: User {user_id} - HasBingo: {has_bingo}, Pattern: {pattern_type}")
                 
@@ -412,7 +428,7 @@ class ValidationWebSocketServer:
                     current_game = await Database.get_game(game_id)
                     if current_game and current_game.get('status') == 'active':
                         # Process winner through game_manager
-                        winner_data = await game_manager.process_winner(game_id, int(user_id))
+                        winner_data = await manager.process_winner(game_id, int(user_id))
                         
                         if winner_data:
                             # Send confirmation to claimant
@@ -422,10 +438,10 @@ class ValidationWebSocketServer:
                                 'prize_amount': winner_data.get('prize_amount', 0),
                                 'pattern_type': pattern_type,
                                 'winning_pattern': winning_pattern,
+                                'card_price': price,
                                 'timestamp': datetime.now().isoformat()
                             })
                             
-                            # BROADCAST WINNER DISPLAY TO ALL PLAYERS
                             # Get full card data for broadcast
                             card_numbers = []
                             if user_card.get('card_numbers'):
@@ -443,12 +459,13 @@ class ValidationWebSocketServer:
                             winner_data['winning_pattern'] = winning_pattern
                             winner_data['pattern_type'] = pattern_type
                                                         
-                            logger.info(f"🎉 BINGO WINNER PROCESSED: User {user_id} won with pattern {pattern_type}")
+                            logger.info(f"🎉 BINGO WINNER PROCESSED: User {user_id} won with pattern {pattern_type} ({price} birr tier)")
                         else:
                             logger.error(f"❌ Failed to process winner for user {user_id}")
                             await self.send_to_user(str(user_id), {
                                 'type': 'bingo_rejected',
                                 'reason': 'Failed to process winner',
+                                'card_price': price,
                                 'timestamp': datetime.now().isoformat()
                             })
                     else:
@@ -456,6 +473,7 @@ class ValidationWebSocketServer:
                         await self.send_to_user(str(user_id), {
                             'type': 'bingo_rejected',
                             'reason': 'Game no longer active',
+                            'card_price': price,
                             'timestamp': datetime.now().isoformat()
                         })
                 else:
@@ -463,6 +481,7 @@ class ValidationWebSocketServer:
                     await self.send_to_user(str(user_id), {
                         'type': 'bingo_rejected',
                         'reason': 'No valid bingo pattern found',
+                        'card_price': price,
                         'timestamp': datetime.now().isoformat()
                     })
                         
@@ -471,6 +490,7 @@ class ValidationWebSocketServer:
                 await self.send_to_user(str(user_id), {
                     'type': 'bingo_rejected',
                     'reason': f'Server error: {str(e)[:100]}',
+                    'card_price': price,
                     'timestamp': datetime.now().isoformat()
                 })
     
@@ -483,16 +503,20 @@ class ValidationWebSocketServer:
         """Handle countdown completion from frontend"""
         game_id = data.get('game_id')
         phase = data.get('phase')
+        price = data.get('price', 10)
         
         if not game_id or not phase:
             return
         
         try:
             from database.db import Database
-            from utils.game_manager import game_manager
+            from utils.game_manager_factory import game_manager_factory
+            
+            # Get the correct game manager
+            manager = game_manager_factory.get_manager(price)
             
             # FIX: Use game_manager to get game state
-            active_game = await game_manager.get_active_round_game()
+            active_game = await manager.get_active_round_game()
             if not active_game or active_game.get('game_id') != game_id:
                 return
             
@@ -501,9 +525,9 @@ class ValidationWebSocketServer:
             # Validate phase transition
             if phase == 'card_purchase' and current_status == 'card_purchase':
                 # Start game play via game_manager
-                await game_manager.start_game_play(game_id)
+                await manager.start_game_play(game_id)
                 
-                logger.info(f"Game {game_id} transitioned to game_play phase via countdown completion")
+                logger.info(f"Game {game_id} transitioned to game_play phase via countdown completion ({price} birr tier)")
                 
             elif phase == 'winner_display':
                 # FIX: Let game_manager handle scheduling new round
@@ -518,15 +542,19 @@ class ValidationWebSocketServer:
         game_id = data.get('game_id')
         from_phase = data.get('from_phase')
         to_phase = data.get('to_phase')
+        price = data.get('price', 10)
         
         if not game_id or not from_phase or not to_phase:
             return
         
         try:
-            from utils.game_manager import game_manager
+            from utils.game_manager_factory import game_manager_factory
+            
+            # Get the correct game manager
+            manager = game_manager_factory.get_manager(price)
             
             # FIX: Use game_manager to get active game
-            active_game = await game_manager.get_active_round_game()
+            active_game = await manager.get_active_round_game()
             if not active_game or active_game.get('game_id') != game_id:
                 return
             
@@ -544,7 +572,7 @@ class ValidationWebSocketServer:
                 
                 # FIX: Use game_manager methods for transitions
                 if to_phase == 'active':
-                    await game_manager.start_game_play(game_id)
+                    await manager.start_game_play(game_id)
                 elif to_phase == 'winner_display':
                     # Only game_manager should handle this via process_winner
                     pass
@@ -552,19 +580,20 @@ class ValidationWebSocketServer:
                     # New round should be handled by game_manager._schedule_next_round
                     pass
                 
-                logger.info(f"Game {game_id} phase changed: {from_phase} -> {to_phase}")
+                logger.info(f"Game {game_id} phase changed: {from_phase} -> {to_phase} ({price} birr tier)")
             else:
                 logger.warning(f"Invalid phase transition: {from_phase} -> {to_phase}")
                 
         except Exception as e:
             logger.error(f"Error handling phase transition: {e}")
     
-    async def _schedule_new_round(self, game_id: str):
+    async def _schedule_new_round(self, game_id: str, price: int = 10):
         """Schedule new round after winner display - FIXED: Use game_manager"""
         try:
-            # FIX: Let game_manager handle this internally
-            # This method is kept for compatibility but should not be called directly
-            logger.debug(f"New round scheduling for {game_id} should be handled by game_manager")
+            from utils.game_manager_factory import game_manager_factory
+            manager = game_manager_factory.get_manager(price)
+            # Let game_manager handle this internally
+            logger.debug(f"New round scheduling for {game_id} ({price} birr tier) handled by game_manager")
                 
         except Exception as e:
             logger.error(f"Error scheduling new round: {e}")
@@ -572,23 +601,25 @@ class ValidationWebSocketServer:
     async def _handle_new_round_started(self, data: dict):
         """Handle new round started by frontend - FIXED: Use game_manager"""
         game_id = data.get('game_id')
+        price = data.get('price', 10)
         
         if not game_id:
             return
         
         try:
-            from utils.game_manager import game_manager
+            from utils.game_manager_factory import game_manager_factory
+            manager = game_manager_factory.get_manager(price)
             
             # FIX: Verify this is the active game
-            active_game = await game_manager.get_active_round_game()
+            active_game = await manager.get_active_round_game()
             if active_game and active_game.get('game_id') == game_id:
                 # Game is already active, nothing to do
                 return
             
             # If not active, start a new round
-            await game_manager.start_new_round_game()
+            await manager.start_new_round_game()
             
-            logger.info(f"New round started for game {game_id}")
+            logger.info(f"New round started for game {game_id} ({price} birr tier)")
             
         except Exception as e:
             logger.error(f"Error handling new round: {e}")
@@ -597,21 +628,24 @@ class ValidationWebSocketServer:
         """Handle sync request from client"""
         game_id = data.get('game_id')
         user_id = data.get('user_id')
+        price = data.get('price', 10)
         
         if not game_id or not user_id:
             return
         
         try:
-            from utils.game_manager import game_manager
+            from utils.game_manager_factory import game_manager_factory
+            manager = game_manager_factory.get_manager(price)
             
             # FIX: Get game from game_manager first
-            active_game = await game_manager.get_active_round_game()
+            active_game = await manager.get_active_round_game()
             
             if not active_game or active_game.get('game_id') != game_id:
                 # Game not active, send sync response with no active game
                 await self.send_to_user(str(user_id), {
                     'type': 'sync_response',
                     'game_id': game_id,
+                    'card_price': price,
                     'server_state': None,
                     'message': 'Game not active',
                     'has_active_game': False
@@ -619,12 +653,13 @@ class ValidationWebSocketServer:
                 return
             
             # Calculate server countdown using game_manager - FIXED
-            game_status = await game_manager.get_game_status(game_id)
+            game_status = await manager.get_game_status(game_id)
             
             if not game_status.get('success'):
                 await self.send_to_user(str(user_id), {
                     'type': 'sync_response',
                     'game_id': game_id,
+                    'card_price': price,
                     'server_state': None,
                     'message': game_status.get('message', 'Error getting game status') 
                 })
@@ -645,7 +680,7 @@ class ValidationWebSocketServer:
                 'player_count': server_player_count,
                 'prize_pool': server_prize_pool,
                 'game_active': game_status.get('status') == 'active',
-                'countdown_remaining': server_countdown,  # FIXED: Use from game_status
+                'countdown_remaining': server_countdown,
                 'total_cards': await Database.count_sold_cards(game_id),
                 'current_number': active_game.get('current_number'),
                 'round_number': active_game.get('round_number', 1),
@@ -657,6 +692,7 @@ class ValidationWebSocketServer:
             await self.send_to_user(str(user_id), {
                 'type': 'sync_response',
                 'game_id': game_id,
+                'card_price': price,
                 'server_state': server_state,
                 'timestamp': datetime.now().isoformat(),
                 'has_active_game': True
@@ -667,21 +703,23 @@ class ValidationWebSocketServer:
             await self.send_to_user(str(user_id), {
                 'type': 'sync_response',
                 'game_id': game_id,
+                'card_price': price,
                 'server_state': None,
                 'message': f'Sync error: {str(e)}'
             })
     
-    async def _calculate_server_countdown(self, game: dict) -> int:
+    async def _calculate_server_countdown(self, game: dict, price: int = 10) -> int:
         """Calculate countdown based on game timestamps - FIXED"""
         try:
-            from utils.game_manager import game_manager
+            from utils.game_manager_factory import game_manager_factory
+            manager = game_manager_factory.get_manager(price)
             
             game_id = game.get('game_id')
             if not game_id:
                 return 30  # Default
             
             # FIX: Use game_manager's get_game_status for consistent countdown
-            game_status = await game_manager.get_game_status(game_id)
+            game_status = await manager.get_game_status(game_id)
             if game_status.get('success'):
                 return game_status.get('countdown_remaining', 30)
             
@@ -738,11 +776,12 @@ class ValidationWebSocketServer:
             logger.error(f"Error calculating countdown: {e}")
             return 30  # Default
     
-    async def get_server_countdown_for_game(self, game_id: str) -> int:
+    async def get_server_countdown_for_game(self, game_id: str, price: int = 10) -> int:
         """Get server countdown for a specific game - FIXED"""
         try:
-            from utils.game_manager import game_manager
-            game_status = await game_manager.get_game_status(game_id)
+            from utils.game_manager_factory import game_manager_factory
+            manager = game_manager_factory.get_manager(price)
+            game_status = await manager.get_game_status(game_id)
             if game_status.get('success'):
                 return game_status.get('countdown_remaining', 30)
             return 30
@@ -757,33 +796,62 @@ class ValidationWebSocketServer:
             'timestamp': datetime.now().isoformat()
         })
     
-    async def _handle_get_active_game(self, ws: web.WebSocketResponse):
+    async def _handle_get_active_game(self, ws: web.WebSocketResponse, data: dict = None):
         """NEW: Handle request for active game info"""
         try:
-            from utils.game_manager import game_manager
-            active_game = await game_manager.get_active_round_game()
+            from utils.game_manager_factory import game_manager_factory
             
-            if active_game:
-                # Get countdown from game_manager for consistency
-                game_status = await game_manager.get_game_status(active_game.get('game_id'))
-                countdown = game_status.get('countdown_remaining', 30) if game_status.get('success') else 30
+            # If price is specified in data, get that specific game
+            price = data.get('price') if data else None
+            
+            if price:
+                manager = game_manager_factory.get_manager(price)
+                active_game = await manager.get_active_round_game()
                 
-                await self._safe_send_async(ws, {
-                    'type': 'active_game_info',
-                    'game_id': active_game.get('game_id'),
-                    'status': active_game.get('status', 'card_purchase'),
-                    'phase': active_game.get('current_phase', 'card_purchase'),
-                    'round_number': active_game.get('round_number', 1),
-                    'prize_pool': float(active_game.get('prize_pool', 0)),
-                    'countdown_remaining': countdown,  # Add countdown to response
-                    'timestamp': datetime.now().isoformat()
-                })
+                if active_game:
+                    game_status = await manager.get_game_status(active_game.get('game_id'))
+                    countdown = game_status.get('countdown_remaining', 30) if game_status.get('success') else 30
+                    
+                    await self._safe_send_async(ws, {
+                        'type': 'active_game_info',
+                        'game_id': active_game.get('game_id'),
+                        'status': active_game.get('status', 'card_purchase'),
+                        'phase': active_game.get('current_phase', 'card_purchase'),
+                        'round_number': active_game.get('round_number', 1),
+                        'prize_pool': float(active_game.get('prize_pool', 0)),
+                        'countdown_remaining': countdown,
+                        'card_price': price,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                else:
+                    await self._safe_send_async(ws, {
+                        'type': 'no_active_game',
+                        'card_price': price,
+                        'message': f'No active game for {price} birr tier',
+                        'timestamp': datetime.now().isoformat()
+                    })
             else:
-                await self._safe_send_async(ws, {
-                    'type': 'no_active_game',
-                    'message': 'No active game found',
-                    'timestamp': datetime.now().isoformat()
-                })
+                # Get all active games
+                all_games = await game_manager_factory.get_all_active_games()
+                if all_games:
+                    for p, game in all_games.items():
+                        if game:
+                            await self._safe_send_async(ws, {
+                                'type': 'active_game_info',
+                                'game_id': game.get('game_id'),
+                                'status': game.get('status', 'card_purchase'),
+                                'phase': game.get('current_phase', 'card_purchase'),
+                                'round_number': game.get('round_number', 1),
+                                'prize_pool': float(game.get('prize_pool', 0)),
+                                'card_price': p,
+                                'timestamp': datetime.now().isoformat()
+                            })
+                else:
+                    await self._safe_send_async(ws, {
+                        'type': 'no_active_game',
+                        'message': 'No active games found',
+                        'timestamp': datetime.now().isoformat()
+                    })
         except Exception as e:
             logger.error(f"Error handling get_active_game: {e}")
             await self._safe_send_async(ws, {
@@ -796,11 +864,12 @@ class ValidationWebSocketServer:
     async def _handle_test_bingo(self, data: dict, connection_id: str):
         """Test bingo verification for debugging"""
         try:
-            from utils.game_manager import game_manager
+            from utils.game_manager_factory import game_manager_factory
             from database.db import Database
             
             game_id = data.get('game_id')
             user_id = data.get('user_id')
+            price = data.get('price', 10)
             
             if not game_id or not user_id:
                 await self.send_to_user(connection_id, {
@@ -808,6 +877,9 @@ class ValidationWebSocketServer:
                     'error': 'Missing game_id or user_id'
                 })
                 return
+            
+            # Get the correct manager
+            manager = game_manager_factory.get_manager(price)
             
             # Get user card
             user_card = await Database.get_user_card_in_game(int(user_id), game_id)
@@ -823,7 +895,7 @@ class ValidationWebSocketServer:
             
             # Test fast verification
             start_time = time.time()
-            has_bingo, winning_pattern, pattern_type = await game_manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
+            has_bingo, winning_pattern, pattern_type = await manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
             verification_time = time.time() - start_time
             
             # Get card numbers
@@ -854,6 +926,7 @@ class ValidationWebSocketServer:
                 'corner_numbers': corner_numbers,
                 'called_numbers_count': len(called_numbers),
                 'corner_indices': [0, 4, 20, 24],
+                'card_price': price,
                 'message': f"Verification took {verification_time*1000:.1f}ms"
             })
             
@@ -1403,7 +1476,7 @@ async def admin_weekly_commission(request):
 async def admin_stats(request):
     """Non-blocking admin stats"""
     try:
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
 
         # Run ALL DB operations in thread
         db_result = await asyncio.to_thread(Database._get_admin_stats_db)
@@ -1416,28 +1489,35 @@ async def admin_stats(request):
 
         # Async operations (keep in event loop)
         try:
-            active_game = await game_manager.get_active_round_game()
-            active_games_count = 1 if active_game else 0
+            all_games = await game_manager_factory.get_all_active_games()
+            active_games_count = sum(1 for game in all_games.values() if game)
         except Exception as e:
             logger.warning(f"Error getting active games: {e}")
-            active_game = None
+            all_games = {}
             active_games_count = 0
 
-        # Prize pool calculation
-        correct_prize_pool = 0
-        if active_game:
-            real_players = real_players = await asyncio.to_thread(Database._count_game_players,active_game.get('game_id'))
-            fake_players = len(
-                game_manager.fake_user_manager.game_fake_cards.get(
-                    active_game.get('game_id'), {}
-                )
-            )
-            total_players = real_players + fake_players
-            correct_prize_pool = total_players * 8
+        # Prize pool calculation - get from each active game
+        correct_prize_pools = {}
+        for price, game in all_games.items():
+            if game:
+                real_players = await asyncio.to_thread(Database._count_game_players, game.get('game_id'))
+                # Get fake players count - this will vary by price tier
+                fake_players = 0
+                # The fake player count is managed by each game manager instance
+                total_players = real_players + fake_players
+                # Prize pool rate varies by price tier
+                prize_rate = price * 0.8  # 80% of card price
+                correct_prize_pools[price] = total_players * prize_rate
 
         # Other async calls
-        recent_transactions = await asyncio.to_thread(Database._get_recent_transactions,10)
-        system_status = await game_manager.get_system_status() if hasattr(game_manager, 'get_system_status') else {}
+        recent_transactions = await asyncio.to_thread(Database._get_recent_transactions, 10)
+        
+        # Get system status - this will need to aggregate from all managers
+        system_status = {}
+        for price in game_manager_factory.managers.keys():
+            manager = game_manager_factory.get_manager(price)
+            status = await manager.get_system_status() if hasattr(manager, 'get_system_status') else {}
+            system_status[price] = status
 
         stats = {
             'success': True,
@@ -1445,10 +1525,10 @@ async def admin_stats(request):
                 **db_result,
                 'active_games': active_games_count,
                 'online_players': len(websocket_server.user_connections),
-                'has_active_game': active_game is not None,
-                'current_prize_pool': correct_prize_pool,
-                'correct_prize_pool': correct_prize_pool,
-                'commission_source': 'commission_records'
+                'has_active_game': active_games_count > 0,
+                'current_prize_pools': correct_prize_pools,
+                'commission_source': 'commission_records',
+                'price_tiers': list(game_manager_factory.managers.keys())
             },
             'recent_transactions': recent_transactions,
             'system_status': system_status,
@@ -1984,19 +2064,17 @@ async def admin_update_profile(request):
 async def admin_fake_users_status(request):
     """Get current fake users status and configuration"""
     try:
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
-        # Get fake users status from game manager
-        status = await game_manager.get_fake_users_status()
+        # Get status from all game managers
+        all_status = {}
+        for price, manager in game_manager_factory.managers.items():
+            status = await manager.get_fake_users_status()
+            all_status[price] = status
         
         return web.json_response({
             'success': True,
-            'fake_users_enabled': game_manager.fake_users_enabled,
-            'min_fake_players': game_manager.min_fake_players,
-            'max_fake_players': game_manager.max_fake_players,
-            'total_fake_users': len(game_manager.fake_user_manager.fake_users) if hasattr(game_manager, 'fake_user_manager') else 0,
-            'current_game_fake': len(game_manager.fake_user_manager.game_fake_cards.get(game_manager.active_game.get('game_id') if game_manager.active_game else '', {})) if hasattr(game_manager, 'fake_user_manager') else 0,
-            'message': 'Fake users status retrieved successfully',
+            'all_tiers': all_status,
             'timestamp': datetime.now().isoformat()
         })
         
@@ -2010,12 +2088,13 @@ async def admin_fake_users_status(request):
 
 @routes.post('/api/admin/set_fake_player_range')
 async def admin_set_fake_player_range(request):
-    """Set minimum and maximum fake players per game"""
+    """Set minimum and maximum fake players per game for a specific price tier"""
     try:
         data = await request.json()
         min_fake = data.get('min_fake')
         max_fake = data.get('max_fake')
         admin_id = data.get('admin_id')
+        price = data.get('price', 10)  # Default to 10 birr tier
         
         if not min_fake or not max_fake or not admin_id:
             return web.json_response({
@@ -2042,16 +2121,19 @@ async def admin_set_fake_player_range(request):
                 'message': 'Maximum fake players cannot exceed 400'
             }, status=400)
         
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        
+        # Get the correct manager for this price tier
+        manager = game_manager_factory.get_manager(price)
         
         # Call the game manager method to set the range
-        old_min = game_manager.min_fake_players
-        old_max = game_manager.max_fake_players
+        old_min = manager.min_fake_players
+        old_max = manager.max_fake_players
         
-        game_manager.min_fake_players = min_fake
-        game_manager.max_fake_players = max_fake
+        manager.min_fake_players = min_fake
+        manager.max_fake_players = max_fake
         
-        logger.info(f"Admin {admin_id} set fake player range from {old_min}-{old_max} to {min_fake}-{max_fake}")
+        logger.info(f"Admin {admin_id} set fake player range from {old_min}-{old_max} to {min_fake}-{max_fake} for {price} birr tier")
         
         # Record admin transaction
         try:
@@ -2060,12 +2142,13 @@ async def admin_set_fake_player_range(request):
                 admin_id=admin_id,
                 action='set_fake_player_range',
                 target_type='config',
-                target_id='fake_players',
+                target_id=f'fake_players_{price}',
                 details={
                     'old_min': old_min,
                     'old_max': old_max,
                     'new_min': min_fake,
-                    'new_max': max_fake
+                    'new_max': max_fake,
+                    'price_tier': price
                 }
             )
         except Exception as tx_error:
@@ -2073,11 +2156,12 @@ async def admin_set_fake_player_range(request):
         
         return web.json_response({
             'success': True,
-            'message': f'Fake player range set to {min_fake} - {max_fake}',
+            'message': f'Fake player range set to {min_fake} - {max_fake} for {price} birr tier',
             'old_min_fake_players': old_min,
             'old_max_fake_players': old_max,
             'min_fake_players': min_fake,
-            'max_fake_players': max_fake
+            'max_fake_players': max_fake,
+            'price_tier': price
         })
         
     except Exception as e:
@@ -2278,6 +2362,7 @@ async def admin_test_commission(request):
     try:
         data = await request.json()
         game_id = data.get('game_id')
+        price = data.get('price', 10)
         
         if not game_id:
             return web.json_response({
@@ -2285,15 +2370,16 @@ async def admin_test_commission(request):
                 'message': 'game_id is required'
             })
         
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        manager = game_manager_factory.get_manager(price)
         
         # Try to record commission
-        success = await game_manager.record_game_commission(game_id)
+        success = await manager._record_game_commission(game_id)
         
         if success:
             return web.json_response({
                 'success': True,
-                'message': f'Commission recorded for game {game_id}'
+                'message': f'Commission recorded for game {game_id} ({price} birr tier)'
             })
         else:
             return web.json_response({
@@ -2405,6 +2491,10 @@ async def admin_games(request):
         
         games = await Database.get_admin_games(limit, offset)
         total_games = await Database.get_total_games()
+        
+        # Add price tier info to each game
+        for game in games:
+            game['price_tier'] = game.get('card_price', 10)
         
         result = {
             'success': True,
@@ -2625,28 +2715,292 @@ async def admin_transactions(request):
             'message': str(e)
         }, status=500)
 
+# ==================== MULTI-TIER GAME API ENDPOINTS ====================
+
+@routes.get('/api/game/active/{price}')
+async def get_active_game_by_price(request):
+    """Get active game for a specific price tier"""
+    try:
+        price = int(request.match_info.get('price', 10))
+        
+        from utils.game_manager_factory import game_manager_factory
+        
+        # Ensure manager is initialized
+        await game_manager_factory.initialize_manager(price)
+        
+        # Get active game
+        manager = game_manager_factory.get_manager(price)
+        active_game = await manager.get_active_round_game()
+        
+        if not active_game:
+            # No active game, create one
+            result = await manager.start_new_round_game()
+            if result.get('success'):
+                active_game = await manager.get_active_round_game()
+        
+        if not active_game:
+            return web.json_response({
+                'success': False,
+                'message': f'No active game for {price} birr tier'
+            }, status=404)
+        
+        # Get game details with correct prize pool
+        game_id = active_game.get('game_id')
+        
+        # Get player counts
+        with Database.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    COUNT(CASE WHEN is_fake = 0 AND is_active = 1 THEN 1 END) as real_players,
+                    COUNT(CASE WHEN is_fake = 1 AND is_active = 1 THEN 1 END) as fake_players
+                FROM player_cards 
+                WHERE game_id = ?
+            """, (game_id,))
+            row = cursor.fetchone()
+            real_players = row['real_players'] if row else 0
+            fake_players = row['fake_players'] if row else 0
+            total_players = real_players + fake_players
+        
+        # Prize pool = total_players × (price × 0.8)
+        prize_pool = total_players * (price * 0.8)
+        
+        # Get called numbers
+        called_numbers = await Database.get_drawn_numbers(game_id)
+        
+        # Get countdown
+        countdown = await Database.get_game_countdown(game_id) or 30
+        
+        response_data = {
+            'success': True,
+            'game_id': game_id,
+            'status': active_game.get('status', 'card_purchase'),
+            'game_type': active_game.get('game_type', 'round_based'),
+            'card_price': price,
+            'prize_pool': prize_pool,
+            'total_players': total_players,
+            'real_players': real_players,
+            'fake_players': fake_players,
+            'numbers_called': called_numbers,
+            'current_number': active_game.get('current_number'),
+            'round_number': active_game.get('round_number', 1),
+            'countdown_remaining': countdown,
+            'has_winner': active_game.get('status') == 'winner_display',
+            'can_buy': active_game.get('status') == 'card_purchase',
+            'phase': active_game.get('current_phase', 'card_purchase')
+        }
+        
+        return web.json_response(
+            convert_to_json_serializable(response_data),
+            dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting active game for price {price}: {e}", exc_info=True)
+        return web.json_response({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@routes.get('/api/game/{game_id}/state/{user_id}/{price}')
+async def get_game_state_by_price(request):
+    """Get game state for a specific price tier"""
+    try:
+        game_id = request.match_info['game_id']
+        user_id_str = request.match_info['user_id']
+        price = int(request.match_info.get('price', 10))
+        user_id = parse_user_id(user_id_str)
+        
+        from database.db import Database
+        from utils.game_manager_factory import game_manager_factory
+        
+        # Get the correct manager
+        manager = game_manager_factory.get_manager(price)
+        
+        # Get user balance
+        user_data = await Database.get_user_with_balance(user_id)
+        if not user_data:
+            await Database.create_user(
+                user_id=user_id,
+                username=f"User_{user_id}",
+                full_name=f"User {user_id}"
+            )
+            user_data = await Database.get_user_with_balance(user_id)
+        
+        balance = float(user_data.get('balance', 10.00)) if user_data else 10.00
+        
+        # Get user card
+        user_card = await Database.get_user_card_in_game(user_id, game_id)
+        
+        # Get game
+        game = await Database.get_game(game_id)
+        if not game:
+            return web.json_response({
+                'success': False,
+                'message': 'Game not found'
+            }, status=404)
+        
+        # Get player counts
+        with Database.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    COUNT(CASE WHEN is_fake = 0 AND is_active = 1 THEN 1 END) as real_players,
+                    COUNT(CASE WHEN is_fake = 1 AND is_active = 1 THEN 1 END) as fake_players
+                FROM player_cards 
+                WHERE game_id = ?
+            """, (game_id,))
+            row = cursor.fetchone()
+            real_players = row['real_players'] if row else 0
+            fake_players = row['fake_players'] if row else 0
+            total_players = real_players + fake_players
+        
+        # Prize pool
+        prize_pool = total_players * (price * 0.8)
+        
+        # Called numbers
+        called_numbers = await Database.get_drawn_numbers(game_id)
+        
+        response_data = {
+            'success': True,
+            'has_card': user_card is not None,
+            'game_status': game.get('status', 'unknown'),
+            'phase': game.get('current_phase', 'unknown'),
+            'balance': balance,
+            'called_numbers': called_numbers,
+            'prize_pool': prize_pool,
+            'total_players': total_players,
+            'real_players': real_players,
+            'fake_players': fake_players,
+            'current_round': game.get('round_number', 1),
+            'countdown_remaining': await Database.get_game_countdown(game_id) or 0,
+            'has_winner': game.get('status') == 'winner_display',
+            'card_price': price
+        }
+        
+        if user_card:
+            response_data['user_card'] = {
+                'card_id': user_card.get('id'),
+                'card_index': user_card.get('card_index'),
+                'card_data': user_card.get('card_data'),
+                'game_id': user_card.get('game_id'),
+                'user_id': user_card.get('user_id')
+            }
+        
+        return web.json_response(
+            convert_to_json_serializable(response_data),
+            dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting game state: {e}", exc_info=True)
+        return web.json_response({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@routes.post('/api/game/{game_id}/purchase/{user_id}/{price}')
+async def purchase_card_by_price(request):
+    """Purchase a card with specific price tier"""
+    try:
+        game_id = request.match_info['game_id']
+        user_id_str = request.match_info['user_id']
+        price = int(request.match_info.get('price', 10))
+        data = await request.json()
+        
+        card_index = data.get('card_index')
+        if not card_index:
+            return web.json_response({
+                'success': False,
+                'message': 'card_index is required'
+            }, status=400)
+        
+        user_id = parse_user_id(user_id_str)
+        
+        from database.db import Database
+        from utils.game_manager_factory import game_manager_factory
+        
+        # Get the appropriate game manager
+        manager = game_manager_factory.get_manager(price)
+        
+        # Purchase card
+        result = await manager.toggle_card_purchase(
+            game_id=game_id,
+            user_id=user_id,
+            card_index=card_index,
+            action='buy'
+        )
+        
+        return web.json_response(result, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
+        
+    except Exception as e:
+        logger.error(f"Error purchasing card: {e}", exc_info=True)
+        return web.json_response({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@routes.post('/api/game/{game_id}/claim-bingo/{price}')
+async def claim_bingo_by_price(request):
+    """Claim bingo with specific price tier"""
+    try:
+        game_id = request.match_info['game_id']
+        price = int(request.match_info.get('price', 10))
+        data = await request.json()
+        
+        user_id_str = data.get('user_id')
+        if not user_id_str:
+            return web.json_response({
+                'success': False,
+                'message': 'user_id is required'
+            }, status=400)
+        
+        user_id = parse_user_id(user_id_str)
+        
+        from utils.game_manager_factory import game_manager_factory
+        
+        # Get the appropriate game manager
+        manager = game_manager_factory.get_manager(price)
+        
+        # Process winner
+        result = await manager.handle_bingo_claim(game_id, user_id)
+        
+        return web.json_response(result, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
+        
+    except Exception as e:
+        logger.error(f"Error claiming bingo: {e}", exc_info=True)
+        return web.json_response({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+# ==================== ORIGINAL ENDPOINTS (KEPT UNCHANGED FOR BACKWARD COMPATIBILITY) ====================
+
 @routes.post('/api/admin/startgame')
 async def admin_start_game(request):
     """Admin: Start a game - FIXED: Better error handling and game state checks"""
     try:
         data = await request.json()
         admin_id = data.get('admin_id', 'system')
-        force = data.get('force', False)  # Force start even if game exists
+        force = data.get('force', False)
+        price = data.get('price', 10)  # Add price parameter with default
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
-        # Check if there's already an active game
-        active_game = await game_manager.get_active_round_game()
+        # Get the correct manager
+        manager = game_manager_factory.get_manager(price)
+        
+        # Check if there's already an active game for this price tier
+        active_game = await manager.get_active_round_game()
         
         if active_game and not force:
-            # Check if the existing game is stuck
             game_id = active_game.get('game_id')
             game_status = active_game.get('status')
             
-            # If game is in winner_display for too long, allow force start
             if game_status == 'winner_display':
-                # Check how long it's been in winner_display
                 game = await Database.get_game(game_id)
                 if game and game.get('completed_at'):
                     completed_time = game.get('completed_at')
@@ -2658,50 +3012,48 @@ async def admin_start_game(request):
                     
                     if completed_time:
                         time_diff = datetime.now() - completed_time
-                        if time_diff.total_seconds() > 30:  # More than 30 seconds in winner display
+                        if time_diff.total_seconds() > 30:
                             logger.info(f"Game {game_id} appears stuck in winner_display, allowing force start")
-                            # Allow force start
                             pass
                         else:
                             return web.json_response({
                                 'success': False,
-                                'message': 'A game is already active. Use force parameter to override.'
+                                'message': f'A game is already active for {price} birr tier. Use force parameter to override.'
                             }, status=400)
                     else:
                         return web.json_response({
                             'success': False,
-                            'message': 'A game is already active. Use force parameter to override.'
+                            'message': f'A game is already active for {price} birr tier. Use force parameter to override.'
                         }, status=400)
                 else:
                     return web.json_response({
                         'success': False,
-                        'message': 'A game is already active. Use force parameter to override.'
+                        'message': f'A game is already active for {price} birr tier. Use force parameter to override.'
                     }, status=400)
             else:
                 return web.json_response({
                     'success': False,
-                    'message': 'A game is already active. Stop it first or use force parameter.'
+                    'message': f'A game is already active for {price} birr tier. Stop it first or use force parameter.'
                 }, status=400)
         
         # Stop any existing number calling
         if active_game:
             from utils.number_caller import number_caller
             await number_caller.stop_number_calling_for_game(active_game.get('game_id'))
-            logger.info(f"Stopped number calling for existing game {active_game.get('game_id')}")
+            logger.info(f"Stopped number calling for existing game {active_game.get('game_id')} ({price} birr tier)")
         
         # Start new game
-        logger.info(f"Admin {admin_id} starting new game (force={force})")
-        result = await game_manager.start_new_round_game()
+        logger.info(f"Admin {admin_id} starting new game for {price} birr tier (force={force})")
+        result = await manager.start_new_round_game()
         
         if result.get('success'):
-            # Get the new game
-            new_game = await game_manager.get_active_round_game()
+            new_game = await manager.get_active_round_game()
             game_id = new_game.get('game_id') if new_game else None
             
-            # Broadcast to all connected clients
             await websocket_server.broadcast_with_retry({
                 'type': 'admin_game_started',
                 'game_id': game_id,
+                'card_price': price,
                 'admin_action': 'start_game',
                 'force': force,
                 'timestamp': datetime.now().isoformat()
@@ -2709,8 +3061,9 @@ async def admin_start_game(request):
             
             return web.json_response({
                 'success': True,
-                'message': 'New game started successfully',
-                'game_id': game_id
+                'message': f'New game started successfully for {price} birr tier',
+                'game_id': game_id,
+                'price_tier': price
             })
         else:
             return web.json_response({
@@ -2733,6 +3086,7 @@ async def admin_stop_game(request):
         data = await request.json()
         game_id = data.get('game_id')
         admin_id = data.get('admin_id', 'system')
+        price = data.get('price', 10)
         
         if not game_id:
             return web.json_response({
@@ -2742,7 +3096,9 @@ async def admin_stop_game(request):
         
         from database.db import Database
         from utils.number_caller import number_caller
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        
+        manager = game_manager_factory.get_manager(price)
         
         # Get game
         game = await Database.get_game(game_id)
@@ -2769,7 +3125,7 @@ async def admin_stop_game(request):
         # Also update the game_manager state
         try:
             # Force the game_manager to update its state
-            await game_manager.force_game_completion(game_id)
+            await manager.force_game_completion(game_id)
         except Exception as e:
             logger.warning(f"Error updating game_manager state: {e}")
         
@@ -2777,17 +3133,19 @@ async def admin_stop_game(request):
         await websocket_server.broadcast_with_retry({
             'type': 'admin_game_stopped',
             'game_id': game_id,
+            'card_price': price,
             'admin_action': 'stop_game',
             'timestamp': datetime.now().isoformat(),
             'message': 'Game stopped by admin'
         })
         
-        logger.info(f"Admin {admin_id} stopped game {game_id}")
+        logger.info(f"Admin {admin_id} stopped game {game_id} ({price} birr tier)")
         
         return web.json_response({
             'success': True,
             'message': f'Game {game_id} stopped successfully',
-            'game_id': game_id
+            'game_id': game_id,
+            'price_tier': price
         })
         
     except Exception as e:
@@ -2804,15 +3162,18 @@ async def admin_reset_game(request):
     try:
         data = await request.json()
         admin_id = data.get('admin_id', 'system')
+        price = data.get('price', 10)
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         from utils.number_caller import number_caller
         
-        logger.info(f"🔄 Admin {admin_id} initiating force game reset")
+        manager = game_manager_factory.get_manager(price)
+        
+        logger.info(f"🔄 Admin {admin_id} initiating force game reset for {price} birr tier")
         
         # Get current active game
-        active_game = await game_manager.get_active_round_game()
+        active_game = await manager.get_active_round_game()
         
         if active_game:
             game_id = active_game.get('game_id')
@@ -2825,27 +3186,30 @@ async def admin_reset_game(request):
             await Database.update_game_status(game_id, 'completed')
             
             # Clear any fake players for this game
-            if hasattr(game_manager, 'fake_user_manager'):
-                if game_id in game_manager.fake_user_manager.game_fake_cards:
-                    del game_manager.fake_user_manager.game_fake_cards[game_id]
+            if hasattr(manager, 'fake_user_manager'):
+                if game_id in manager.fake_user_manager.game_fake_cards:
+                    del manager.fake_user_manager.game_fake_cards[game_id]
                     logger.info(f"Cleared fake cards for game {game_id}")
             
             # Clear any pending winners
-            if hasattr(game_manager, '_winners'):
-                if game_id in game_manager._winners:
-                    del game_manager._winners[game_id]
+            if hasattr(manager, '_winners'):
+                if game_id in manager._winners:
+                    del manager._winners[game_id]
             
-            logger.info(f"Reset game {game_id}")
+            logger.info(f"Reset game {game_id} ({price} birr tier)")
+        else:
+            logger.info(f"No active game to reset for {price} birr tier")
         
         # Start a new game immediately
-        result = await game_manager.start_new_round_game()
+        result = await manager.start_new_round_game()
         
         if result.get('success'):
-            new_game = await game_manager.get_active_round_game()
+            new_game = await manager.get_active_round_game()
             new_game_id = new_game.get('game_id') if new_game else None
             
             await websocket_server.broadcast_with_retry({
                 'type': 'game_reset',
+                'card_price': price,
                 'message': 'Game was force reset by admin',
                 'new_game_id': new_game_id,
                 'timestamp': datetime.now().isoformat()
@@ -2853,13 +3217,14 @@ async def admin_reset_game(request):
             
             return web.json_response({
                 'success': True,
-                'message': 'Game reset successfully and new game started',
-                'new_game_id': new_game_id
+                'message': f'Game reset successfully and new game started for {price} birr tier',
+                'new_game_id': new_game_id,
+                'price_tier': price
             })
         else:
             return web.json_response({
                 'success': False,
-                'message': 'Failed to start new game after reset'
+                'message': result.get('message', 'Failed to start new game after reset')
             }, status=500)
         
     except Exception as e:
@@ -2877,6 +3242,7 @@ async def admin_call_number(request):
         data = await request.json()
         game_id = data.get('game_id')
         number = data.get('number')
+        price = data.get('price', 10)
         
         if not game_id or not number:
             return web.json_response({
@@ -2916,15 +3282,17 @@ async def admin_call_number(request):
             'type': 'admin_number_called',
             'game_id': game_id,
             'number': number,
+            'card_price': price,
             'admin_action': 'call_number',
             'timestamp': datetime.now().isoformat()
         })
         
         return web.json_response({
             'success': True,
-            'message': f'Number {number} called successfully in game {game_id}',
+            'message': f'Number {number} called successfully in game {game_id} ({price} birr tier)',
             'game_id': game_id,
-            'number': number
+            'number': number,
+            'price_tier': price
         })
         
     except Exception as e:
@@ -2933,6 +3301,7 @@ async def admin_call_number(request):
             'success': False,
             'message': str(e)
         }, status=500)
+
 
 @routes.post('/api/admin/addbalance')
 async def admin_add_balance(request):
@@ -2999,6 +3368,7 @@ async def admin_add_balance(request):
             'message': str(e)
         }, status=500)
 
+
 @routes.post('/api/admin/approvepayment')
 async def admin_approve_payment(request):
     """Admin: Approve a payment"""
@@ -3059,6 +3429,7 @@ async def admin_approve_payment(request):
             'success': False,
             'message': str(e)
         }, status=500)
+
 
 @routes.post('/api/admin/notification')
 async def admin_send_notification(request):
@@ -4065,16 +4436,19 @@ async def admin_force_reset_game(request):
         data = await request.json()
         admin_id = data.get('admin_id', 'system')
         game_id = data.get('game_id')
+        price = data.get('price', 10)
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         from utils.number_caller import number_caller
         
-        logger.info(f"🔄 Admin {admin_id} initiating force game reset for {game_id or 'current game'}")
+        manager = game_manager_factory.get_manager(price)
+        
+        logger.info(f"🔄 Admin {admin_id} initiating force game reset for {game_id or 'current game'} ({price} birr tier)")
         
         # If no game_id provided, get current active game
         if not game_id:
-            active_game = await game_manager.get_active_round_game()
+            active_game = await manager.get_active_round_game()
             if active_game:
                 game_id = active_game.get('game_id')
         
@@ -4087,30 +4461,31 @@ async def admin_force_reset_game(request):
             await Database.update_game_status(game_id, 'completed')
             
             # Clear any fake players for this game
-            if hasattr(game_manager, 'fake_user_manager'):
-                if game_id in game_manager.fake_user_manager.game_fake_cards:
-                    del game_manager.fake_user_manager.game_fake_cards[game_id]
+            if hasattr(manager, 'fake_user_manager'):
+                if game_id in manager.fake_user_manager.game_fake_cards:
+                    del manager.fake_user_manager.game_fake_cards[game_id]
                     logger.info(f"Cleared fake cards for game {game_id}")
             
             # Clear any pending winners
-            if hasattr(game_manager, '_winners'):
-                if game_id in game_manager._winners:
-                    del game_manager._winners[game_id]
+            if hasattr(manager, '_winners'):
+                if game_id in manager._winners:
+                    del manager._winners[game_id]
             
-            logger.info(f"Reset game {game_id}")
+            logger.info(f"Reset game {game_id} ({price} birr tier)")
         else:
-            logger.info("No active game to reset")
+            logger.info(f"No active game to reset for {price} birr tier")
         
         # Start a new game immediately
-        result = await game_manager.start_new_round_game()
+        result = await manager.start_new_round_game()
         
         if result.get('success'):
-            new_game = await game_manager.get_active_round_game()
+            new_game = await manager.get_active_round_game()
             new_game_id = new_game.get('game_id') if new_game else None
             
             # Broadcast to all connected clients
             await websocket_server.broadcast_with_retry({
                 'type': 'game_reset',
+                'card_price': price,
                 'message': 'Game was force reset by admin',
                 'new_game_id': new_game_id,
                 'timestamp': datetime.now().isoformat()
@@ -4124,7 +4499,8 @@ async def admin_force_reset_game(request):
                     target_type='game',
                     target_id=game_id or 'none',
                     details={
-                        'new_game_id': new_game_id
+                        'new_game_id': new_game_id,
+                        'price_tier': price
                     }
                 )
             except:
@@ -4132,8 +4508,9 @@ async def admin_force_reset_game(request):
             
             return web.json_response({
                 'success': True,
-                'message': 'Game reset successfully and new game started',
-                'new_game_id': new_game_id
+                'message': f'Game reset successfully and new game started for {price} birr tier',
+                'new_game_id': new_game_id,
+                'price_tier': price
             })
         else:
             return web.json_response({
@@ -4154,7 +4531,7 @@ async def admin_health_check(request):
     """Admin health check endpoint with detailed status"""
     try:
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
         # Check database connection
         db_status = "ok"
@@ -4167,8 +4544,11 @@ async def admin_health_check(request):
             db_status = "error"
             db_error = str(e)
         
-        # Get system status
-        system_status = await game_manager.get_system_status() if hasattr(game_manager, 'get_system_status') else {}
+        # Get system status from all managers
+        system_status = {}
+        for price, manager in game_manager_factory.managers.items():
+            status = await manager.get_system_status() if hasattr(manager, 'get_system_status') else {}
+            system_status[price] = status
         
         # Get websocket status
         ws_status = {
@@ -4186,6 +4566,7 @@ async def admin_health_check(request):
             },
             'websocket': ws_status,
             'game_manager': system_status,
+            'price_tiers': list(game_manager_factory.managers.keys()),
             'version': '1.0.0'
         })
         
@@ -4494,28 +4875,33 @@ async def sync_game_state(request):
     try:
         game_id = request.match_info['game_id']
         data = await request.json()
+        price = data.get('price', 10)
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        
+        manager = game_manager_factory.get_manager(price)
         
         # Get server state via game_manager
-        active_game = await game_manager.get_active_round_game()
+        active_game = await manager.get_active_round_game()
         
         if not active_game or active_game.get('game_id') != game_id:
             return web.json_response({
                 'corrected': False,
                 'message': 'Game not active',
-                'has_active_game': False
+                'has_active_game': False,
+                'price_tier': price
             })
         
         server_status = active_game.get('status', 'unknown')
         
         # Calculate server countdown via game_manager - FIXED
-        game_status = await game_manager.get_game_status(game_id)
+        game_status = await manager.get_game_status(game_id)
         if not game_status.get('success'):
             return web.json_response({
                 'corrected': False,
-                'message': game_status.get('message', 'Error getting game status')
+                'message': game_status.get('message', 'Error getting game status'),
+                'price_tier': price
             })
         
         # FIX: Get countdown from game_status, not from separate calculation
@@ -4536,23 +4922,24 @@ async def sync_game_state(request):
         if server_status != client_phase:
             # Phase mismatch
             corrected = True
-            logger.info(f"Phase correction for game {game_id}: {client_phase} -> {server_status}")
+            logger.info(f"Phase correction for game {game_id} ({price} birr tier): {client_phase} -> {server_status}")
         
         # Check countdown - if difference is more than 5 seconds, correct
         if abs(server_countdown - client_countdown) > 5:
             corrected = True
-            logger.info(f"Countdown correction for game {game_id}: client {client_countdown}s, server {server_countdown}s")
+            logger.info(f"Countdown correction for game {game_id} ({price} birr tier): client {client_countdown}s, server {server_countdown}s")
         
         # Check called numbers
         if len(server_called) > len(client_called) + 2:
             # Client missing more than 2 numbers
             corrected = True
-            logger.info(f"Called numbers correction for game {game_id}: client has {len(client_called)}, server has {len(server_called)}")
+            logger.info(f"Called numbers correction for game {game_id} ({price} birr tier): client has {len(client_called)}, server has {len(server_called)}")
         
         # Prepare response
         response_data = {
             'corrected': corrected,
             'has_active_game': True,
+            'price_tier': price,
             'server_state': {
                 'game_phase': server_status,
                 'game_status': server_status,
@@ -4591,11 +4978,14 @@ async def get_complete_game_state(request):
         game_id = request.match_info['game_id']
         user_id_str = request.match_info['user_id']
         user_id = parse_user_id(user_id_str)
+        price = int(request.query.get('price', 10))
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
-        logger.info(f"📡 Complete state requested for game {game_id}, user {user_id}")
+        manager = game_manager_factory.get_manager(price)
+        
+        logger.info(f"📡 Complete state requested for game {game_id}, user {user_id} ({price} birr tier)")
         
         # Get game via game_manager
         game = await Database.get_game(game_id)
@@ -4619,23 +5009,24 @@ async def get_complete_game_state(request):
         
         # Get fake players count from game_manager
         fake_players = 0
-        if hasattr(game_manager, 'fake_user_manager'):
-            fake_players = len(game_manager.fake_user_manager.game_fake_cards.get(game_id, {}))
+        if hasattr(manager, 'fake_user_manager'):
+            fake_players = len(manager.fake_user_manager.game_fake_cards.get(game_id, {}))
         
         total_players = real_players + fake_players
         
         # ========== FIXED: Calculate correct prize pool ==========
-        correct_prize_pool = total_players * 8
+        prize_rate = price * 0.8  # 80% of card price
+        correct_prize_pool = total_players * prize_rate
         
         # Get winners from game_manager
         winners = []
         winners_count = 0
         max_winners = 2
         
-        if hasattr(game_manager, 'get_winners'):
-            winners = await game_manager.get_winners(game_id)
-            winners_count = await game_manager.get_winners_count(game_id)
-            max_winners = getattr(game_manager, 'max_winners', 2)
+        if hasattr(manager, 'get_winners'):
+            winners = await manager.get_winners(game_id)
+            winners_count = await manager.get_winners_count(game_id)
+            max_winners = getattr(manager, 'max_winners', 2)
         
         # Calculate countdown
         countdown = 0
@@ -4685,8 +5076,8 @@ async def get_complete_game_state(request):
         
         # Format winners with payouts
         formatted_winners = []
-        if winners and hasattr(game_manager, 'calculate_winner_payouts'):
-            payouts = await game_manager.calculate_winner_payouts(game_id, correct_prize_pool)
+        if winners and hasattr(manager, 'calculate_winner_payouts'):
+            payouts = await manager.calculate_winner_payouts(game_id, correct_prize_pool)
             
             for i, winner in enumerate(winners):
                 formatted_winner = {
@@ -4722,13 +5113,14 @@ async def get_complete_game_state(request):
             'winners': formatted_winners,
             'winners_count': winners_count,
             'max_winners': max_winners,
-            'min_fake_players': getattr(game_manager, 'min_fake_players', 10),
-            'max_fake_players': getattr(game_manager, 'max_fake_players', 40),
-            'fake_users_enabled': getattr(game_manager, 'fake_users_enabled', True),
+            'min_fake_players': getattr(manager, 'min_fake_players', 10),
+            'max_fake_players': getattr(manager, 'max_fake_players', 40),
+            'fake_users_enabled': getattr(manager, 'fake_users_enabled', True),
+            'card_price': price,
             'timestamp': datetime.now().isoformat()
         }
         
-        logger.info(f"✅ Complete state sent for game {game_id}, user {user_id}")
+        logger.info(f"✅ Complete state sent for game {game_id}, user {user_id} ({price} birr tier)")
         return web.json_response(
             convert_to_json_serializable(response_data),
             dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder)
@@ -4742,17 +5134,18 @@ async def get_complete_game_state(request):
         }, status=500)
 
 
-async def calculate_server_countdown(game: dict) -> int:
+async def calculate_server_countdown(game: dict, price: int = 10) -> int:
     """Calculate countdown based on game timestamps - FIXED"""
     try:
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        manager = game_manager_factory.get_manager(price)
         
         game_id = game.get('game_id')
         if not game_id:
             return 30  # Default
         
         # FIX: Use game_manager's get_game_status for consistent countdown
-        game_status = await game_manager.get_game_status(game_id)
+        game_status = await manager.get_game_status(game_id)
         if game_status.get('success'):
             return game_status.get('countdown_remaining', 30)
         
@@ -4871,14 +5264,17 @@ async def get_user_balance(request):
 async def get_active_game(request):
     """Get active game - FIXED: Shows correct total players and prize pool"""
     try:
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        
+        # Get default manager (10 birr tier)
+        manager = game_manager_factory.get_manager(10)
         
         # Get active game from game_manager
-        active_game = await game_manager.get_active_round_game()
+        active_game = await manager.get_active_round_game()
         
         if not active_game:
             # No active game, create one via game_manager
-            result = await game_manager.start_new_round_game()
+            result = await manager.start_new_round_game()
             if not result.get('success'):
                 return web.json_response({
                     'success': False,
@@ -4887,7 +5283,7 @@ async def get_active_game(request):
                 }, status=404)
             
             # Get the newly created game
-            active_game = await game_manager.get_active_round_game()
+            active_game = await manager.get_active_round_game()
             if not active_game:
                 return web.json_response({
                     'success': False,
@@ -4895,6 +5291,7 @@ async def get_active_game(request):
                 }, status=404)
         
         game_id = active_game.get('game_id')
+        price = int(active_game.get('card_price', 10))
         
         numbers_called = await Database.get_drawn_numbers(game_id) or []
         
@@ -4903,24 +5300,25 @@ async def get_active_game(request):
         
         # Get fake players count from game_manager
         fake_players = 0
-        if hasattr(game_manager, 'fake_user_manager'):
-            fake_players = len(game_manager.fake_user_manager.game_fake_cards.get(game_id, {}))
+        if hasattr(manager, 'fake_user_manager'):
+            fake_players = len(manager.fake_user_manager.game_fake_cards.get(game_id, {}))
         
         total_players = real_players + fake_players
         sold_cards = await Database.count_sold_cards(game_id)
         
         # ========== FIXED: Calculate correct prize pool based on ALL players ==========
-        # Prize pool = total players × 8 birr (80% of 10 birr card price)
-        correct_prize_pool = total_players * 8
+        # Prize pool = total players × (price × 0.8)
+        prize_rate = price * 0.8
+        correct_prize_pool = total_players * prize_rate
         
         # Get game status via game_manager for consistent countdown
-        game_status = await game_manager.get_game_status(game_id)
+        game_status = await manager.get_game_status(game_id)
         
         # Get countdown
         if game_status.get('success'):
             countdown = game_status.get('countdown_remaining', 30)
         else:
-            countdown = await calculate_server_countdown(active_game)
+            countdown = await calculate_server_countdown(active_game, price)
         
         # FIX: Handle created_at properly
         created_at = active_game.get('created_at')
@@ -4946,7 +5344,7 @@ async def get_active_game(request):
         else:
             started_at_str = None
         
-        logger.info(f"📊 Game {game_id} stats: Real: {real_players}, Fake: {fake_players}, Total: {total_players}, Prize: {correct_prize_pool}")
+        logger.info(f"📊 Game {game_id} stats: Real: {real_players}, Fake: {fake_players}, Total: {total_players}, Prize: {correct_prize_pool}, Price: {price}")
         
         response_data = {
             'success': True,
@@ -4994,7 +5392,7 @@ async def get_user_game_state(request):
         user_id = parse_user_id(user_id_str)
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
         # Get user balance
         user_data = await Database.get_user_with_balance(user_id)
@@ -5012,8 +5410,21 @@ async def get_user_game_state(request):
         # Get user card
         user_card = await Database.get_user_card_in_game(user_id, game_id)
         
+        # Get game
+        game = await Database.get_game(game_id)
+        if not game:
+            return web.json_response({
+                'success': False,
+                'message': 'Game not found'
+            }, status=404)
+        
+        price = int(game.get('card_price', 10))
+        
+        # Get the correct manager
+        manager = game_manager_factory.get_manager(price)
+        
         # Get game status via game_manager
-        game_status = await game_manager.get_game_status(game_id)
+        game_status = await manager.get_game_status(game_id)
         
         if not game_status.get('success'):
             return web.json_response({
@@ -5026,13 +5437,14 @@ async def get_user_game_state(request):
         
         # Get fake players count from game_manager
         fake_players = 0
-        if hasattr(game_manager, 'fake_user_manager'):
-            fake_players = len(game_manager.fake_user_manager.game_fake_cards.get(game_id, {}))
+        if hasattr(manager, 'fake_user_manager'):
+            fake_players = len(manager.fake_user_manager.game_fake_cards.get(game_id, {}))
         
         total_players = real_players + fake_players
         
         # ========== FIXED: Calculate correct prize pool ==========
-        correct_prize_pool = total_players * 8  # 80% of 10 birr card price
+        prize_rate = price * 0.8
+        correct_prize_pool = total_players * prize_rate
         
         # Get called numbers
         numbers_called = await Database.get_drawn_numbers(game_id)
@@ -5054,7 +5466,7 @@ async def get_user_game_state(request):
             'current_round': game_status.get('round_number', 1),
             'countdown_remaining': game_status.get('countdown_remaining', 0),
             'has_winner': game_status.get('status') == 'winner_display',
-            'card_price': 10.00
+            'card_price': price
         }
         
         # Add user_card data if exists
@@ -5068,7 +5480,7 @@ async def get_user_game_state(request):
             }
         
         # Get active game for current_number
-        active_game = await game_manager.get_active_round_game()
+        active_game = await manager.get_active_round_game()
         if active_game and active_game.get('game_id') == game_id:
             response_data['current_number'] = active_game.get('current_number')
         
@@ -5095,6 +5507,7 @@ async def toggle_card_purchase(request):
         user_id_str = data.get('user_id')
         card_index = data.get('card_index')
         action = data.get('action', 'buy')
+        price = data.get('price', 10)
         
         if not user_id_str or not card_index:
             return web.json_response({
@@ -5104,9 +5517,11 @@ async def toggle_card_purchase(request):
         
         user_id = parse_user_id(user_id_str)
         
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
-        result = await game_manager.toggle_card_purchase(
+        manager = game_manager_factory.get_manager(price)
+        
+        result = await manager.toggle_card_purchase(
             game_id, 
             int(user_id), 
             int(card_index), 
@@ -5120,15 +5535,10 @@ async def toggle_card_purchase(request):
                 'game_id': game_id,
                 'user_id': user_id,
                 'card_index': card_index,
+                'card_price': price,
                 'prize_pool': result.get('prize_pool', 0),
                 'timestamp': datetime.now().isoformat()
             })
-            
-            # Also broadcast player count update
-            # from database.db import Database
-            # real_players = await Database.count_game_players(game_id)
-            # fake_players = len(game_manager.fake_user_manager.game_fake_cards.get(game_id, {})) if hasattr(game_manager, 'fake_user_manager') else 0
-            # await websocket_server.broadcast_player_count(game_id, real_players, fake_players)
         
         return web.json_response(result, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
         
@@ -5227,14 +5637,17 @@ async def claim_bingo_lightning_fast(request):
             }, status=400)
         
         user_id = parse_user_id(user_id_str)
+        price = data.get('price', 10)
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
         
-        logger.info(f"🚨 HTTP BINGO CLAIM from user {user_id} in game {game_id}")
+        manager = game_manager_factory.get_manager(price)
+        
+        logger.info(f"🚨 HTTP BINGO CLAIM from user {user_id} in game {game_id} ({price} birr tier)")
         
         # Use game_manager's immediate bingo claim handler for 4 corners priority
-        winner_data = await game_manager.handle_immediate_bingo_claim(game_id, user_id)
+        winner_data = await manager.handle_immediate_bingo_claim(game_id, user_id)
         
         if winner_data:
             # Get full card data for broadcast
@@ -5254,7 +5667,13 @@ async def claim_bingo_lightning_fast(request):
             winner_data['card_numbers'] = card_numbers
             
             # Broadcast winner display to all clients
-            await websocket_server.broadcast_winner_display(game_id, winner_data)
+            await websocket_server.broadcast_with_retry({
+                'type': 'winner_confirmed',
+                'game_id': game_id,
+                'card_price': price,
+                'winner': winner_data,
+                'timestamp': datetime.now().isoformat()
+            })
             
             return web.json_response({
                 'success': True,
@@ -5264,6 +5683,7 @@ async def claim_bingo_lightning_fast(request):
                 'winning_pattern': winner_data.get('winning_pattern', []),
                 'verification_time_ms': winner_data.get('verification_time_ms', 0),
                 'game_type': 'round_based',
+                'card_price': price,
                 'action': 'game_stopped'
             }, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
         else:
@@ -5275,7 +5695,8 @@ async def claim_bingo_lightning_fast(request):
                     'success': False,
                     'message': 'No valid bingo pattern found',
                     'game_type': 'round_based',
-                    'game_active': True
+                    'game_active': True,
+                    'card_price': price
                 }, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
             else:
                 # Game already has a winner or not active
@@ -5283,7 +5704,8 @@ async def claim_bingo_lightning_fast(request):
                     'success': False,
                     'message': 'Game already has a winner or not active',
                     'game_type': 'round_based',
-                    'game_active': False
+                    'game_active': False,
+                    'card_price': price
                 }, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
             
     except Exception as e:
@@ -5302,9 +5724,12 @@ async def debug_verify_bingo(request):
         game_id = request.match_info['game_id']
         user_id_str = request.match_info['user_id']
         user_id = parse_user_id(user_id_str)
+        price = int(request.query.get('price', 10))
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        
+        manager = game_manager_factory.get_manager(price)
         
         # Get user card
         user_card = await Database.get_user_card_in_game(user_id, game_id)
@@ -5319,7 +5744,7 @@ async def debug_verify_bingo(request):
         
         # Test fast verification
         start_time = time.time()
-        has_bingo, winning_pattern, pattern_type = await game_manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
+        has_bingo, winning_pattern, pattern_type = await manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
         verification_time = time.time() - start_time
         
         # Get card numbers
@@ -5355,6 +5780,7 @@ async def debug_verify_bingo(request):
             'corner_indices': [0, 4, 20, 24],
             'called_numbers_count': len(called_numbers),
             'called_numbers': called_numbers[:20],  # First 20 for debugging
+            'card_price': price,
             'message': f"Verification took {verification_time*1000:.1f}ms - 4 corners checked first"
         })
         
@@ -5374,9 +5800,12 @@ async def force_verify_bingo(request):
         game_id = request.match_info['game_id']
         user_id_str = request.match_info['user_id']
         user_id = parse_user_id(user_id_str)
+        price = int(request.query.get('price', 10))
         
         from database.db import Database
-        from utils.game_manager import game_manager
+        from utils.game_manager_factory import game_manager_factory
+        
+        manager = game_manager_factory.get_manager(price)
         
         # Get game
         game = await Database.get_game(game_id)
@@ -5398,11 +5827,11 @@ async def force_verify_bingo(request):
         called_numbers = await Database.get_drawn_numbers(game_id)
         
         # Force verification
-        has_bingo, winning_pattern, pattern_type = await game_manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
+        has_bingo, winning_pattern, pattern_type = await manager._fast_verify_bingo_with_pattern(user_card, called_numbers)
         
         if has_bingo:
             # Process winner
-            winner_data = await game_manager.process_winner(game_id, user_id)
+            winner_data = await manager.process_winner(game_id, user_id)
             
             if winner_data:
                 # Get full card data for broadcast
@@ -5424,7 +5853,8 @@ async def force_verify_bingo(request):
                 return web.json_response({
                     'success': True,
                     'message': 'BINGO verified and winner processed!',
-                    'winner_data': winner_data
+                    'winner_data': winner_data,
+                    'card_price': price
                 })
             else:
                 return web.json_response({
@@ -5434,7 +5864,8 @@ async def force_verify_bingo(request):
                         'has_bingo': True,
                         'pattern_type': pattern_type,
                         'winning_pattern': winning_pattern
-                    }
+                    },
+                    'card_price': price
                 })
         else:
             return web.json_response({
@@ -5444,7 +5875,8 @@ async def force_verify_bingo(request):
                     'has_bingo': False,
                     'pattern_type': pattern_type,
                     'winning_pattern': winning_pattern
-                }
+                },
+                'card_price': price
             })
             
     except Exception as e:
@@ -5460,8 +5892,11 @@ async def force_verify_bingo(request):
 async def health_check(request):
     """Health check endpoint"""
     try:
-        from utils.game_manager import game_manager
-        system_status = await game_manager.get_system_status() if hasattr(game_manager, 'get_system_status') else {}
+        from utils.game_manager_factory import game_manager_factory
+        system_status = {}
+        for price, manager in game_manager_factory.managers.items():
+            status = await manager.get_system_status() if hasattr(manager, 'get_system_status') else {}
+            system_status[price] = status
     except:
         system_status = {}
     
@@ -5477,7 +5912,8 @@ async def health_check(request):
         'websocket_connections': len(websocket_server.connections),
         'authenticated_users': len(websocket_server.user_connections),
         'game_manager_status': system_status,
-        'commission_table': 'commission_records'
+        'commission_table': 'commission_records',
+        'price_tiers': list(game_manager_factory.managers.keys())
     }, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
 
 
@@ -5486,8 +5922,11 @@ async def health_check(request):
 async def system_status(request):
     """Get system status"""
     try:
-        from utils.game_manager import game_manager
-        system_status = await game_manager.get_system_status() if hasattr(game_manager, 'get_system_status') else {}
+        from utils.game_manager_factory import game_manager_factory
+        system_status = {}
+        for price, manager in game_manager_factory.managers.items():
+            status = await manager.get_system_status() if hasattr(manager, 'get_system_status') else {}
+            system_status[price] = status
         
         return web.json_response({
             'success': True,
@@ -5496,6 +5935,7 @@ async def system_status(request):
                 'connections': len(websocket_server.connections),
                 'authenticated_users': len(websocket_server.user_connections)
             },
+            'price_tiers': list(game_manager_factory.managers.keys()),
             'timestamp': datetime.now().isoformat()
         }, dumps=lambda obj: json.dumps(obj, cls=CustomJSONEncoder))
     except Exception as e:
@@ -5593,6 +6033,10 @@ async def home(request):
                     <div class="description">Main bingo game interface for players</div>
                 </li>
                 <li>
+                    <a href="/game_20birr.html" target="_blank">🎮 VIP Game (100 birr)</a>
+                    <div class="description">High stakes bingo game interface</div>
+                </li>
+                <li>
                     <a href="/admin.html" target="_blank">👨‍💼 Admin Panel</a>
                     <div class="description">Administration panel for managing games, users, and payments</div>
                 </li>
@@ -5612,6 +6056,8 @@ async def home(request):
             <h3>API Endpoints:</h3>
             <ul class="link-list">
                 <li><a href="/api/game/active" target="_blank">/api/game/active</a> - Get active game info</li>
+                <li><a href="/api/game/active/10" target="_blank">/api/game/active/10</a> - Get active 10 birr game</li>
+                <li><a href="/api/game/active/100" target="_blank">/api/game/active/100</a> - Get active VIP game</li>
                 <li><a href="/api/user/balance/1" target="_blank">/api/user/balance/{user_id}</a> - Get user balance</li>
                 <li><a href="/ws" target="_blank">/ws</a> - WebSocket connection</li>
             </ul>
@@ -5658,7 +6104,15 @@ async def game_html(request):
             # If external file not found, use simplified embedded version
             logger.warning("game.html not found in any standard location, using embedded version")
             html_content = """
-            No file found
+            <!DOCTYPE html>
+            <html>
+            <head><title>Game - Habesha Bingo</title></head>
+            <body>
+                <h1>🎮 Habesha Bingo Game</h1>
+                <p>Game page not found. Please check server configuration.</p>
+                <p><a href="/">Return to Home</a></p>
+            </body>
+            </html>
             """
         
         return web.Response(
@@ -5666,7 +6120,6 @@ async def game_html(request):
             content_type='text/html',
             headers={
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
-                # 'Pragma': 'no-cache',
                 'Expires': '0',
                 'Access-Control-Allow-Origin': '*'
             }
@@ -5698,6 +6151,62 @@ async def game_html(request):
         </html>
         """
         return web.Response(text=error_html, content_type='text/html', status=500)
+
+
+@routes.get('/game_20birr.html')
+async def game_20birr_html(request):
+    """Serve the 20 birr VIP game HTML page from external file"""
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        possible_paths = [
+            os.path.join(current_dir, 'game_20birr.html'),
+            os.path.join(current_dir, 'templates', 'game_20birr.html'),
+            os.path.join(current_dir, 'static', 'game_20birr.html'),
+            os.path.join(current_dir, 'html', 'game_20birr.html'),
+            'game_20birr.html',
+            './game_20birr.html'
+        ]
+        
+        html_content = None
+        
+        for path in possible_paths:
+            try:
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+                    logger.info(f"Successfully served game_20birr.html from: {path}")
+                    break
+            except Exception as e:
+                logger.debug(f"Failed to read {path}: {e}")
+                continue
+        
+        if html_content is None:
+            logger.warning("game_20birr.html not found, using fallback")
+            html_content = """
+            <!DOCTYPE html>
+            <html>
+            <head><title>VIP Game - Habesha Bingo</title></head>
+            <body>
+                <h1>👑 VIP Bingo Game</h1>
+                <p>VIP game page not found. Please check server configuration.</p>
+                <p><a href="/">Return to Home</a></p>
+            </body>
+            </html>
+            """
+        
+        return web.Response(
+            text=html_content,
+            content_type='text/html',
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Expires': '0',
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error serving game_20birr.html: {e}", exc_info=True)
+        return web.Response(text=f"Error loading VIP game page: {str(e)}", status=500)
 
 
 @routes.get('/admin.html')
@@ -5736,8 +6245,16 @@ async def admin_html(request):
             # If external file not found, use simplified embedded version
             logger.warning("admin.html not found in any standard location, using embedded version")
             html_content = """
-                <h1>No Admin file found</h1>
-                       """
+            <!DOCTYPE html>
+            <html>
+            <head><title>Admin - Habesha Bingo</title></head>
+            <body>
+                <h1>👨‍💼 Habesha Bingo Admin Panel</h1>
+                <p>Admin panel not found. Please check server configuration.</p>
+                <p><a href="/">Return to Home</a></p>
+            </body>
+            </html>
+            """
         
         return web.Response(
             text=html_content,
@@ -5842,14 +6359,15 @@ async def run_server():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    # Use port 8081
-    site = web.TCPSite(runner, WEBSERVER_HOST, 8081)
+    # Use port 8082
+    site = web.TCPSite(runner, WEBSERVER_HOST, 8082)
     await site.start()
     
-    logger.info(f"✅ Web server started on http://{WEBSERVER_HOST}:8081")
-    logger.info(f"✅ WebSocket server ready on ws://{WEBSERVER_HOST}:8081/ws")
-    logger.info(f"✅ Game interface: http://{WEBSERVER_HOST}:8081/game.html")
-    logger.info(f"✅ Admin panel: http://{WEBSERVER_HOST}:8081/admin.html")
+    logger.info(f"✅ Web server started on http://{WEBSERVER_HOST}:8082")
+    logger.info(f"✅ WebSocket server ready on ws://{WEBSERVER_HOST}:8082/ws")
+    logger.info(f"✅ Game interface: http://{WEBSERVER_HOST}:8082/game.html")
+    logger.info(f"✅ VIP Game interface: http://{WEBSERVER_HOST}:8082/game_20birr.html")
+    logger.info(f"✅ Admin panel: http://{WEBSERVER_HOST}:8082/admin.html")
     logger.info("Press Ctrl+C to stop the server")
     
     try:
