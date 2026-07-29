@@ -2013,7 +2013,6 @@
         </div>
     </div>
 
-    <script>
    // ==================== CONFIGURATION ====================
   const API_BASE_URL = `${window.location.protocol}//${window.location.host}/api`;
   const WS_BASE_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
@@ -2024,10 +2023,21 @@
   const PRICE_TIER = priceParam ? parseInt(priceParam) : 20; // Default to 20 for this page
   const CARD_PRICE = PRICE_TIER;
   
+  // ==================== GAME ID PREFIX VALIDATION ====================
+  const GAME_ID_PREFIX = PRICE_TIER === 20 ? "20RGAME_" : "10RGAME_";
+  
   const SOUNDS_BASE_URL = `${window.location.protocol}//${window.location.host}/sounds`;
 
   console.log(`💰 Price tier: ${PRICE_TIER} birr`);
   console.log(`🎟️ Card price: ${CARD_PRICE} birr`);
+  console.log(`🏷️ Game ID prefix: ${GAME_ID_PREFIX}`);
+
+  // ==================== GAME ID VALIDATION FUNCTION ====================
+  function isValidGameId(gameId) {
+    if (!gameId) return false;
+    // Check if the game ID starts with the correct prefix
+    return gameId.startsWith(GAME_ID_PREFIX);
+  }
 
   // ==================== GAME STATE ====================
   const gameState = {
@@ -2121,7 +2131,8 @@
     gameStartConfirmed: false,
     lastConfirmedPhase: "card_purchase",
     phaseChangePending: false,
-    priceTier: PRICE_TIER, // Store price tier in game state
+    priceTier: PRICE_TIER,
+    gameIdPrefix: GAME_ID_PREFIX,
   };
 
   // 1. TELEGRAM-ONLY ACCESS CHECK - FIXED VERSION
@@ -2671,6 +2682,13 @@
   async function claimBingo() {
     console.log("Attempting to claim BINGO...");
 
+    // ==================== FIX: Validate game ID prefix ====================
+    if (!isValidGameId(gameState.gameId)) {
+      console.error(`Invalid game ID for ${PRICE_TIER} birr tier: ${gameState.gameId}`);
+      showNotification(`Invalid game for ${PRICE_TIER} birr tier`, "error");
+      return;
+    }
+
     if (!gameState.gameId) {
       showNotification("No active game", "error");
       return;
@@ -3029,6 +3047,13 @@
     console.log(
       `Fetching card for user ${gameState.userId} in game ${gameId}`,
     );
+
+    // ==================== FIX: Validate game ID prefix ====================
+    if (!isValidGameId(gameId)) {
+      console.error(`Invalid game ID for ${PRICE_TIER} birr tier: ${gameId}`);
+      gameState.hasCard = false;
+      return false;
+    }
 
     try {
       const response = await fetch(
@@ -3462,6 +3487,15 @@
       return false;
     }
 
+    // ==================== FIX: Validate game ID prefix ====================
+    if (!isValidGameId(gameState.gameId)) {
+      console.error(`Invalid game ID for ${PRICE_TIER} birr tier: ${gameState.gameId}`);
+      console.log(`Expected prefix: ${GAME_ID_PREFIX}`);
+      showNotification(`Invalid game for ${PRICE_TIER} birr tier. Please refresh.`, "error");
+      gameState.fullSyncInProgress = false;
+      return false;
+    }
+
     if (gameState.fullSyncInProgress) {
       console.log("Full sync already in progress");
       return false;
@@ -3489,6 +3523,13 @@
       const data = await response.json();
 
       if (data.success) {
+        // ==================== FIX: Additional validation - verify game ID matches prefix ====================
+        if (!isValidGameId(data.game_id)) {
+          console.error(`Server returned invalid game ID: ${data.game_id}`);
+          showNotification(`Invalid game data received. Please refresh.`, "error");
+          return false;
+        }
+
         console.log("Complete game state received:", data);
         console.log("📊 Game state from database:");
         console.log(`   Real players: ${data.real_players || 0}`);
@@ -3789,6 +3830,8 @@
     console.log("=== VERIFYING GAME DATA FROM BACKEND ===");
     console.log("Game ID:", gameState.gameId);
     console.log("Price Tier:", gameState.priceTier);
+    console.log("Expected Prefix:", gameState.gameIdPrefix);
+    console.log("Is Valid:", isValidGameId(gameState.gameId));
     console.log("Real players:", gameState.realPlayers);
     console.log("Fake players:", gameState.fakePlayers);
     console.log("Total players:", gameState.totalPlayers);
@@ -3813,6 +3856,12 @@
 
     if (gameState.gamePhase !== "card_purchase") {
       console.log("Not in card purchase phase, not starting countdown");
+      return;
+    }
+
+    // ==================== FIX: Validate game ID prefix ====================
+    if (!isValidGameId(gameState.gameId)) {
+      console.error(`Cannot start countdown - invalid game ID: ${gameState.gameId}`);
       return;
     }
 
@@ -3906,9 +3955,15 @@
     console.log("WebSocket message received:", data.type, data);
     gameState.lastUpdateTime = Date.now();
 
-    // Check if this message is for the correct price tier
+    // ==================== FIX: Check if this message is for the correct price tier ====================
     if (data.price && data.price !== gameState.priceTier) {
       console.log(`Ignoring message for price tier ${data.price}, current tier is ${gameState.priceTier}`);
+      return;
+    }
+
+    // ==================== FIX: Validate game ID if present ====================
+    if (data.game_id && !isValidGameId(data.game_id)) {
+      console.log(`Ignoring message for invalid game ID: ${data.game_id} (expected prefix: ${GAME_ID_PREFIX})`);
       return;
     }
 
@@ -4327,6 +4382,12 @@
 
     if (!data) {
       console.error("Received null winner data!");
+      return;
+    }
+
+    // ==================== FIX: Validate game ID in winner data ====================
+    if (data.game_id && !isValidGameId(data.game_id)) {
+      console.error(`Winner message for invalid game ID: ${data.game_id}`);
       return;
     }
 
@@ -4905,6 +4966,12 @@
 
   function handleExistingGameResumed(data) {
     console.log("Handling existing game resumed:", data);
+
+    // ==================== FIX: Validate game ID ====================
+    if (data.game_id && !isValidGameId(data.game_id)) {
+      console.log(`Ignoring existing game resume for invalid game ID: ${data.game_id}`);
+      return;
+    }
 
     if (data.game_id) {
       gameState.gameId = data.game_id;
@@ -6306,6 +6373,11 @@
       const data = await response.json();
 
       if (data.success) {
+        // ==================== FIX: Validate game ID in active game response ====================
+        if (data.game_id && !isValidGameId(data.game_id)) {
+          console.error(`Active game response has invalid game ID: ${data.game_id}`);
+          return null;
+        }
         return data;
       } else {
         return null;
@@ -6437,6 +6509,7 @@
   // ==================== INITIALIZATION ====================
   async function initGame() {
     console.log(`Initializing haset Bingo (Server-Coordinated) - ${gameState.priceTier} birr tier...`);
+    console.log(`🔒 Only accepting game IDs with prefix: ${GAME_ID_PREFIX}`);
     updateConnectionStatus("Initializing...", "orange");
 
     // Update card price display
@@ -6465,6 +6538,15 @@
     const gameData = await fetchActiveGame();
     if (gameData && gameData.success) {
       console.log(`Active ${gameState.priceTier} birr game found:`, gameData.game_id);
+      
+      // ==================== FIX: Validate game ID from active game ====================
+      if (!isValidGameId(gameData.game_id)) {
+        console.error(`Active game has invalid ID for ${PRICE_TIER} birr tier: ${gameData.game_id}`);
+        console.log(`Expected prefix: ${GAME_ID_PREFIX}`);
+        showNotification(`Invalid game for ${PRICE_TIER} birr tier. Please refresh.`, "error");
+        return;
+      }
+      
       gameState.gameId = gameData.game_id;
       gameState.gameType = gameData.game_type || "round_based";
       gameState.gameStatus = gameData.status || "unknown";
