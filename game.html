@@ -1288,6 +1288,41 @@
         text-align: center;
         padding: 20px;
       }
+
+
+/* Leave Button Styles */
+.leave-btn {
+    background: rgba(255,0,0,0.2);
+    color: #ff6b6b;
+    border: 1px solid #ff6b6b;
+    padding: 8px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Poppins', sans-serif;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.leave-btn:hover {
+    background: rgba(255,0,0,0.3);
+    transform: scale(1.02);
+}
+
+.leave-btn:active {
+    transform: scale(0.98);
+}
+
+.leave-container {
+    text-align: center;
+    margin-top: 12px;
+    padding: 0 10px;
+}
+
+
+
     
     @media (max-width: 767px) {
         .container {
@@ -1800,6 +1835,13 @@
             <!-- REMOVED: new-round-banner -->
             
             <div class="game-stats">
+
+                <div class="leave-container">
+              <button class="leave-btn" onclick="leaveGame()">
+                  <i class="fas fa-sign-out-alt"></i> Leave Game
+              </button>
+          </div>
+
                 <div class="stat-item">
                     <div class="stat-label">Countdown</div>
                     <div class="countdown-timer" id="countdown-timer">30</div>
