@@ -6293,6 +6293,204 @@ async def admin_html(request):
         </html>
         """
         return web.Response(text=error_html, content_type='text/html', status=500)
+    
+    
+    
+    
+    
+@routes.get('/index.html')
+async def index_html(request):
+    """Serve the tier selection page"""
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        possible_paths = [
+            os.path.join(current_dir, 'index.html'),
+            os.path.join(current_dir, 'templates', 'index.html'),
+            os.path.join(current_dir, 'static', 'index.html'),
+            os.path.join(current_dir, 'html', 'index.html'),
+            'index.html',
+            './index.html'
+        ]
+        
+        html_content = None
+        
+        for path in possible_paths:
+            try:
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+                    logger.info(f"✅ Served index.html from: {path}")
+                    break
+            except Exception as e:
+                logger.debug(f"Failed to read {path}: {e}")
+                continue
+        
+        if html_content is None:
+            # Fallback: Use the embedded version
+            logger.warning("index.html not found, using embedded version")
+            html_content = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VIP Bingo - Choose Your Game</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container { max-width: 500px; width: 100%; padding: 20px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { font-size: 28px; color: #FFD700; }
+        .header p { color: rgba(255,255,255,0.7); font-size: 14px; }
+        .card-option {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 2px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .card-option:hover { transform: translateY(-3px); border-color: #FFD700; }
+        .card-option .price { font-size: 36px; font-weight: 700; color: #FFD700; }
+        .card-option .label { font-size: 18px; font-weight: 600; margin-top: 5px; }
+        .card-option .description { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 5px; }
+        .card-option .badge {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .badge-standard { background: rgba(76,175,80,0.3); color: #4CAF50; }
+        .badge-vip { background: rgba(255,215,0,0.3); color: #FFD700; }
+        .badge-popular { background: rgba(46,204,113,0.3); color: #58d68d; }
+        .user-info {
+            margin-top: 30px;
+            padding: 15px 20px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-info .balance span { color: #FFD700; font-weight: 600; }
+        .user-info .user-id { font-size: 12px; color: rgba(255,255,255,0.4); }
+        .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+        .footer a { color: #5dade2; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎰 VIP BINGO</h1>
+            <p>Choose your card price and start playing!</p>
+        </div>
+
+        <div class="card-option" onclick="selectGame(10)">
+            <div class="badge badge-standard">STANDARD</div>
+            <div class="price">10 <small style="font-size:16px;color:rgba(255,255,255,0.6);">birr</small></div>
+            <div class="label">🎯 Standard Game</div>
+            <div class="description">8 birr prize pool • 2 birr fee</div>
+        </div>
+
+        <div class="card-option" onclick="selectGame(20)" style="border-color:rgba(255,215,0,0.3);background:linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,215,0,0.02));">
+            <div class="badge badge-vip">🌟 VIP</div>
+            <div class="price">20 <small style="font-size:16px;color:rgba(255,255,255,0.6);">birr</small></div>
+            <div class="label">👑 VIP Game</div>
+            <div class="description">16 birr prize pool • 4 birr fee</div>
+            <div class="badge badge-popular">🔥 Popular</div>
+        </div>
+
+        <div class="user-info">
+            <div class="balance">💰 Balance: <span id="wallet-balance">0.00</span> birr</div>
+            <div class="user-id">👤 <span id="user-id-display">Loading...</span></div>
+        </div>
+
+        <div class="footer">
+            <a href="#" onclick="window.Telegram.WebApp.close()">✖ Close</a>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin + '/api';
+        let userId = null;
+        let userBalance = 0;
+
+        function getUserId() {
+            const params = new URLSearchParams(window.location.search);
+            let id = params.get('user_id');
+            if (!id) {
+                id = localStorage.getItem('haset_bingo_user_id');
+                if (!id) {
+                    id = Math.floor(Math.random() * 1000000) + 1;
+                    localStorage.setItem('haset_bingo_user_id', id);
+                }
+            }
+            return id;
+        }
+
+        async function getUserBalance() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/user/balance/${userId}`);
+                const data = await response.json();
+                if (data.success) {
+                    userBalance = parseFloat(data.balance) || 0;
+                    document.getElementById('wallet-balance').textContent = userBalance.toFixed(2);
+                }
+            } catch(e) {
+                console.error('Balance error:', e);
+            }
+        }
+
+        function selectGame(price) {
+            if (userBalance < price) {
+                alert(`Insufficient balance! You need ${price} birr. Current: ${userBalance.toFixed(2)} birr\\nUse /deposit to add funds.`);
+                return;
+            }
+            localStorage.setItem('haset_bingo_card_price', price);
+            const page = price === 10 ? '/game.html' : '/game_20birr.html';
+            window.location.href = `${page}?price=${price}&user_id=${userId}`;
+        }
+
+        userId = getUserId();
+        document.getElementById('user-id-display').textContent = userId;
+        getUserBalance();
+
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
+
+        setInterval(getUserBalance, 30000);
+    </script>
+</body>
+</html>'''
+        
+        return web.Response(
+            text=html_content,
+            content_type='text/html',
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error serving index.html: {e}", exc_info=True)
+        return web.HTTPFound('/game.html')
 
 
 # ==================== MAIN APPLICATION SETUP ====================
