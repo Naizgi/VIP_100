@@ -1,6 +1,10 @@
 # utils/game_manager_20birr.py - Game logic manager for 20 birr games
 # DUPLICATE of original game_manager.py with renamed class to avoid conflicts
 # All price-sensitive calculations use 20 birr as the base price
+# ==================== FIXED: GAME ID PREFIX FOR 20 BIRR TIER ====================
+# 20 birr games now use "20RGAME_" prefix for easy identification
+# 10 birr games use "10RGAME_" prefix (in game_manager.py)
+# Prevents cross-tier game confusion
 
 import asyncio
 import logging
@@ -117,6 +121,7 @@ class GameManager20Birr:
                    f"COMMISSION_RATE={self.COMMISSION_RATE}")
         logger.info(f"RANDOM FAKE PLAYERS ({self.min_fake_players}-{self.max_fake_players}) per game")
         logger.info(f"📇 Loaded {len(self.fixed_cards)} fixed cards for consistent gameplay")
+        logger.info(f"🏷️ 20 birr games will use '20RGAME_' prefix for game IDs")
     
     def _load_fixed_cards(self):
         """Load the 400 pre-generated fixed cards"""
@@ -176,11 +181,13 @@ class GameManager20Birr:
         """Ensure there's a game in card_purchase phase for 20 birr tier"""
         from database.db import Database
         
+        # ==================== FIX: Filter by 20RGAME_ prefix for 20 birr tier ====================
         with Database.get_cursor() as cursor:
             cursor.execute("""
                 SELECT game_id FROM games 
                 WHERE status = 'card_purchase' AND current_phase = 'card_purchase'
                 AND card_price = 20
+                AND game_id LIKE '20RGAME_%'
                 ORDER BY created_at DESC LIMIT 1
             """)
             existing = cursor.fetchone()
@@ -190,14 +197,16 @@ class GameManager20Birr:
                 async with self._lock:
                     self.active_game = await Database.get_game(game_id)
                 await self._initialize_game_tracking(game_id)
-                logger.info(f"Using existing game: {game_id} for 20 birr tier")
+                logger.info(f"Using existing 20 birr game: {game_id}")
                 return game_id
         
+        logger.info(f"No 20 birr game found, creating new one...")
         return await self._create_new_game()
     
     async def _create_new_game(self):
-        """Create a new game with 20 birr price"""
+        """Create a new game with 20 birr price - FIXED: Uses 20RGAME_ prefix"""
         from database.db import Database
+        import uuid
         
         async with self._creation_lock:
             try:
@@ -208,6 +217,9 @@ class GameManager20Birr:
                 countdown_end = current_time + timedelta(seconds=30)
                 purchase_end_time = current_time + timedelta(seconds=30)
                 
+                # ==================== FIX: Use 20RGAME_ prefix for 20 birr games ====================
+                game_id = f"20RGAME_{round_number}_{uuid.uuid4().hex[:8].upper()}"
+                
                 game_id = await Database.create_new_round_game(
                     admin_id=0,
                     round_number=round_number,
@@ -215,7 +227,8 @@ class GameManager20Birr:
                     current_phase='card_purchase',
                     countdown_end=countdown_end,
                     purchase_end_time=purchase_end_time,
-                    card_price=20
+                    card_price=20,
+                    game_id=game_id  # Pass the custom ID
                 )
                 
                 if game_id:
@@ -227,7 +240,7 @@ class GameManager20Birr:
                     
                     if self.fake_users_enabled:
                         random_fake_count = random.randint(self.min_fake_players, self.max_fake_players)
-                        logger.info(f"🎲 Adding {random_fake_count} fake players to new game {game_id} (20 birr tier)")
+                        logger.info(f"🎲 Adding {random_fake_count} fake players to new 20 birr game {game_id}")
                         await self._add_initial_fake_users(game_id, random_fake_count)
                     
                     await self.purchase_successful_task
@@ -244,7 +257,7 @@ class GameManager20Birr:
                         'timestamp': datetime.now().isoformat()
                     }, game_id)
                     
-                    logger.info(f"✅ Created NEW game: {game_id} (Round {round_number}) for 20 birr tier")
+                    logger.info(f"✅ Created NEW 20 birr game: {game_id} (Round {round_number})")
                     return game_id
                 
                 return None
@@ -635,12 +648,14 @@ class GameManager20Birr:
                 
                 from database.db import Database
                 
+                # ==================== FIX: Filter by 20RGAME_ prefix ====================
                 with Database.get_cursor() as cursor:
                     cursor.execute("""
                         SELECT game_id, status, current_phase, created_at, started_at, completed_at
                         FROM games 
                         WHERE status NOT IN ('completed', 'archived')
                         AND card_price = 20
+                        AND game_id LIKE '20RGAME_%'
                         ORDER BY created_at DESC
                     """)
                     rows = cursor.fetchall()
@@ -749,8 +764,24 @@ class GameManager20Birr:
                 await Database.init_db()
                 await Database.migrate_db()
                 
+                # ==================== FIX: Get 20 birr game using ID prefix ====================
                 async with self._lock:
-                    self.active_game = await Database.get_active_round_game_by_price(20)
+                    with Database.get_cursor() as cursor:
+                        cursor.execute("""
+                            SELECT * FROM games 
+                            WHERE game_type = 'round_based' 
+                            AND card_price = 20
+                            AND game_id LIKE '20RGAME_%'
+                            AND status IN ('card_purchase', 'active', 'winner_display')
+                            ORDER BY created_at DESC 
+                            LIMIT 1
+                        """)
+                        row = cursor.fetchone()
+                        self.active_game = dict(row) if row else None
+                        if self.active_game:
+                            logger.info(f"📋 GameManager20Birr loaded active game: {self.active_game.get('game_id')}")
+                        else:
+                            logger.info("📋 GameManager20Birr: No active 20 birr game found")
                 
                 await self._recover_abandoned_games()
                 
@@ -1470,7 +1501,16 @@ class GameManager20Birr:
         try:
             from database.db import Database
             
-            card_purchase_games = await Database.get_games_by_status_and_price('card_purchase', 20)
+            # ==================== FIX: Filter by 20RGAME_ prefix ====================
+            with Database.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM games 
+                    WHERE status = 'card_purchase' 
+                    AND card_price = 20
+                    AND game_id LIKE '20RGAME_%'
+                    ORDER BY created_at DESC
+                """)
+                card_purchase_games = [dict(row) for row in cursor.fetchall()]
             
             if len(card_purchase_games) > 1:
                 logger.warning(f"Found {len(card_purchase_games)} games in card_purchase phase for 20 birr tier. Need to recover...")
@@ -3336,7 +3376,19 @@ class GameManager20Birr:
         async with self._lock:
             try:
                 from database.db import Database
-                self.active_game = await Database.get_active_round_game_by_price(20)
+                # ==================== FIX: Filter by 20RGAME_ prefix ====================
+                with Database.get_cursor() as cursor:
+                    cursor.execute("""
+                        SELECT * FROM games 
+                        WHERE game_type = 'round_based' 
+                        AND card_price = 20
+                        AND game_id LIKE '20RGAME_%'
+                        AND status IN ('card_purchase', 'active', 'winner_display')
+                        ORDER BY created_at DESC 
+                        LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    self.active_game = dict(row) if row else None
                 
                 if self.active_game:
                     game_id = self.active_game.get('game_id')

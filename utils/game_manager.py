@@ -96,6 +96,10 @@
 # ==================== FIXED: DEDICATED NUMBER CALLER FOR 10 BIRR TIER ====================
 # GameManager now uses its own dedicated number caller instance
 # Prevents cross-contamination with 20 birr tier
+# ==================== FIXED: GAME ID PREFIX FOR 10 BIRR TIER ====================
+# 10 birr games now use "10RGAME_" prefix for easy identification
+# 20 birr games use "20RGAME_" prefix (in game_manager_20birr.py)
+# Prevents cross-tier game confusion
 # ============================================================
 
 import asyncio
@@ -237,6 +241,7 @@ class GameManager:
         logger.info(f"GameManager initialized with DEDICATED 10 birr number caller")
         logger.info(f"GameManager initialized with RANDOM FAKE PLAYERS ({self.min_fake_players}-{self.max_fake_players}) per game")
         logger.info(f"📇 Loaded {len(self.fixed_cards)} fixed cards for consistent gameplay")
+        logger.info(f"🏷️ 10 birr games will use '10RGAME_' prefix for game IDs")
     
     # ==================== FIXED: Load pre-generated cards (your provided data) ====================
     def _load_fixed_cards(self):
@@ -317,12 +322,13 @@ class GameManager:
         """Ensure there's a game in card_purchase phase, create if needed"""
         from database.db import Database
         
-        # First check if there's already a game in card_purchase
+        # ==================== FIX: Filter by 10RGAME_ prefix for 10 birr tier ====================
         with Database.get_cursor() as cursor:
             cursor.execute("""
                 SELECT game_id FROM games 
                 WHERE status = 'card_purchase' AND current_phase = 'card_purchase'
                 AND card_price = 10
+                AND game_id LIKE '10RGAME_%'
                 ORDER BY created_at DESC LIMIT 1
             """)
             existing = cursor.fetchone()
@@ -334,15 +340,16 @@ class GameManager:
                 
                 # Initialize tracking for this game
                 await self._initialize_game_tracking(game_id)
-                logger.info(f"Using existing game: {game_id}")
+                logger.info(f"Using existing 10 birr game: {game_id}")
                 return game_id
         
         # No existing game, create new one
         return await self._create_new_game()
     
     async def _create_new_game(self):
-        """Create a new game with fake players"""
+        """Create a new game with fake players - FIXED: Uses 10RGAME_ prefix"""
         from database.db import Database
+        import uuid
         
         async with self._creation_lock:
             try:
@@ -353,6 +360,9 @@ class GameManager:
                 countdown_end = current_time + timedelta(seconds=30)
                 purchase_end_time = current_time + timedelta(seconds=30)
                 
+                # ==================== FIX: Use 10RGAME_ prefix for 10 birr games ====================
+                game_id = f"10RGAME_{round_number}_{uuid.uuid4().hex[:8].upper()}"
+                
                 game_id = await Database.create_new_round_game(
                     admin_id=0,
                     round_number=round_number,
@@ -360,7 +370,8 @@ class GameManager:
                     current_phase='card_purchase',
                     countdown_end=countdown_end,
                     purchase_end_time=purchase_end_time,
-                    card_price=10
+                    card_price=10,
+                    game_id=game_id  # Pass the custom ID
                 )
                 
                 if game_id:
@@ -374,7 +385,7 @@ class GameManager:
                     # Add fake players immediately
                     if self.fake_users_enabled:
                         random_fake_count = random.randint(self.min_fake_players, self.max_fake_players)
-                        logger.info(f"🎲 Adding {random_fake_count} fake players to new game {game_id}")
+                        logger.info(f"🎲 Adding {random_fake_count} fake players to new 10 birr game {game_id}")
                         await self._add_initial_fake_users(game_id, random_fake_count)
                     #awaiting task
                     await self.purchase_successful_task
@@ -391,7 +402,7 @@ class GameManager:
                         'timestamp': datetime.now().isoformat()
                     }, game_id)
                     
-                    logger.info(f"✅ Created NEW game: {game_id} (Round {round_number})")
+                    logger.info(f"✅ Created NEW 10 birr game: {game_id} (Round {round_number})")
                     return game_id
                 
                 return None
@@ -860,6 +871,7 @@ class GameManager:
                         FROM games 
                         WHERE status NOT IN ('completed', 'archived')
                         AND card_price = 10
+                        AND game_id LIKE '10RGAME_%'
                         ORDER BY created_at DESC
                     """)
                     rows = cursor.fetchall()
@@ -980,9 +992,20 @@ class GameManager:
                 await Database.init_db()
                 await Database.migrate_db()
                 
-                # FIX: Get active game with proper locking
+                # FIX: Get active game with proper locking - filtered by 10RGAME_ prefix
                 async with self._lock:
-                    self.active_game = await Database.get_active_round_game_by_price(10)
+                    with Database.get_cursor() as cursor:
+                        cursor.execute("""
+                            SELECT * FROM games 
+                            WHERE game_type = 'round_based' 
+                            AND card_price = 10
+                            AND game_id LIKE '10RGAME_%'
+                            AND status IN ('card_purchase', 'active', 'winner_display')
+                            ORDER BY created_at DESC 
+                            LIMIT 1
+                        """)
+                        row = cursor.fetchone()
+                        self.active_game = dict(row) if row else None
                 
                 # CRITICAL FIX: Check for any stuck games in card_purchase phase
                 await self._recover_abandoned_games()
@@ -1816,7 +1839,15 @@ class GameManager:
             from database.db import Database
             
             # Get all games in card_purchase phase for 10 birr tier
-            card_purchase_games = await Database.get_games_by_status_and_price('card_purchase', 10)
+            with Database.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM games 
+                    WHERE status = 'card_purchase' 
+                    AND card_price = 10
+                    AND game_id LIKE '10RGAME_%'
+                    ORDER BY created_at DESC
+                """)
+                card_purchase_games = [dict(row) for row in cursor.fetchall()]
             
             if len(card_purchase_games) > 1:
                 logger.warning(f"Found {len(card_purchase_games)} games in card_purchase phase for 10 birr tier. Need to recover...")
@@ -3978,7 +4009,18 @@ class GameManager:
         async with self._lock:
             try:
                 from database.db import Database
-                self.active_game = await Database.get_active_round_game_by_price(10)
+                with Database.get_cursor() as cursor:
+                    cursor.execute("""
+                        SELECT * FROM games 
+                        WHERE game_type = 'round_based' 
+                        AND card_price = 10
+                        AND game_id LIKE '10RGAME_%'
+                        AND status IN ('card_purchase', 'active', 'winner_display')
+                        ORDER BY created_at DESC 
+                        LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    self.active_game = dict(row) if row else None
                 
                 # Re-initialize winner tracking for active game
                 if self.active_game:
