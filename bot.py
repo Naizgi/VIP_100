@@ -92,6 +92,7 @@ restart_flag = False
 aiohttp_session = None
 main_task = None
 game_manager = None
+game_manager_20birr = None
 enhanced_payment_validator = None
 bot = None
 dp = None
@@ -2154,7 +2155,7 @@ async def restore_database_from_file(file_path: str, admin_id: int, original_mes
 # ==================== MAIN FUNCTION ====================
 async def main():
     """Main application entry point"""
-    global runner, currency, enhanced_payment_validator, game_manager, main_task, bot, dp
+    global runner, currency, enhanced_payment_validator, game_manager, game_manager_20birr, main_task, bot, dp
     
     import sys
     if sys.platform != "win32":
@@ -3945,16 +3946,31 @@ async def main():
         import traceback
         traceback.print_exc()
     
-    # Initialize game manager
+    # ==================== INITIALIZE GAME MANAGER FOR 10 BIRR TIER ====================
     try:
-        logger.info("Initializing game manager...")
+        logger.info("Initializing game manager for 10 birr tier...")
         from utils.game_manager import game_manager
         await game_manager.initialize()
-        game_manager_obj = game_manager
-        logger.info("[OK] Game manager initialized!")
+        game_manager = game_manager
+        logger.info("[OK] Game manager 10 birr initialized!")
     except Exception as e:
-        logger.error(f"[ERROR] Game manager initialization failed: {e}")
-        game_manager_obj = None
+        logger.error(f"[ERROR] Game manager 10 birr initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        game_manager = None
+
+    # ==================== INITIALIZE GAME MANAGER FOR 20 BIRR TIER ====================
+    try:
+        logger.info("Initializing game manager for 20 birr tier...")
+        from utils.game_manager_20birr import game_manager_20birr as gm20
+        await gm20.initialize()
+        game_manager_20birr = gm20
+        logger.info("[OK] Game manager 20 birr initialized!")
+    except Exception as e:
+        logger.error(f"[ERROR] Game manager 20 birr initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        game_manager_20birr = None
         
     # Start web servers as background task
     try:
