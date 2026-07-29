@@ -14,6 +14,9 @@ import functools
 from database.db import Database
 from utils.bingo_cards import bingo_cards
 
+# ==================== FIX: Import dedicated number caller for 20 birr tier ====================
+from utils.number_caller import number_caller_20birr
+
 # ==================== IMPORT WEBSOCKET SERVER ====================
 try:
     from web_server import websocket_server
@@ -103,7 +106,12 @@ class GameManager20Birr:
         self.fixed_cards = self._load_fixed_cards()
         self._stuck_game_checker = None
         self.INITIAL_DEPOSIT = 5
-        
+
+        # ==================== FIX: DEDICATED NUMBER CALLER FOR 20 BIRR TIER ====================
+        self.number_caller = number_caller_20birr
+        self.number_caller.set_game_manager(self)
+
+        logger.info(f"GameManager20Birr initialized with DEDICATED 20 birr number caller")
         logger.info(f"GameManager20Birr initialized with CARD_PRICE=20 birr, "
                    f"PRIZE_POOL_RATE={self.PRIZE_POOL_RATE}, "
                    f"COMMISSION_RATE={self.COMMISSION_RATE}")
@@ -361,7 +369,6 @@ class GameManager20Birr:
     
     async def _run_active_game_phase(self, game_id: str) -> bool:
         """Run the active game phase (number calling)"""
-        from utils.number_caller import number_caller
         logger.info(f"🎯 Starting ACTIVE GAME phase for game {game_id} (20 birr tier)")
         
         await Database.update_game_phase(game_id, 'active')
@@ -376,7 +383,9 @@ class GameManager20Birr:
         
         self._game_state_versions[game_id] = self._game_state_versions.get(game_id, 0) + 1
         await self._broadcast_full_game_state(game_id)
-        await number_caller.start_number_calling_for_game(game_id)
+        
+        # ==================== FIX: Use dedicated number caller ====================
+        await self.number_caller.start_number_calling_for_game(game_id)
         
         game_active = True
         while game_active:
@@ -402,9 +411,10 @@ class GameManager20Birr:
                     game_active = False
                     break
             
+            # ==================== FIX: Check dedicated number caller ====================
             try:
-                if hasattr(number_caller, 'is_calling_numbers_for_game'):
-                    if not number_caller.is_calling_numbers_for_game(game_id):
+                if hasattr(self.number_caller, 'is_calling_numbers_for_game'):
+                    if not self.number_caller.is_calling_numbers_for_game(game_id):
                         logger.warning(f"Number caller stopped for game {game_id}")
                         game_active = False
                         break
@@ -413,7 +423,8 @@ class GameManager20Birr:
             
             await asyncio.sleep(0.5)
         
-        await number_caller.stop_number_calling_for_game(game_id)
+        # ==================== FIX: Stop dedicated number caller ====================
+        await self.number_caller.stop_number_calling_for_game(game_id)
         
         final_winners_count = await self.get_winners_count(game_id)
         if final_winners_count == 0:
@@ -539,11 +550,11 @@ class GameManager20Birr:
     async def _emergency_cleanup(self, game_id: str):
         """Emergency cleanup for stuck games"""
         from database.db import Database
-        from utils.number_caller import number_caller
         
         logger.warning(f"🚨 Emergency cleanup for game {game_id} (20 birr tier)")
         
-        await number_caller.stop_number_calling_for_game(game_id)
+        # ==================== FIX: Use dedicated number caller ====================
+        await self.number_caller.stop_number_calling_for_game(game_id)
         
         await Database.update_game_status(game_id, 'completed')
         await Database.update_game_phase(game_id, 'completed')
@@ -690,9 +701,9 @@ class GameManager20Birr:
                             if active_duration > 180:
                                 logger.warning(f"Game {game_id} active for {active_duration:.0f}s with no winners")
                                 
-                                from utils.number_caller import number_caller
+                                # ==================== FIX: Use dedicated number caller ====================
                                 try:
-                                    is_calling = number_caller.is_calling_numbers_for_game(game_id)
+                                    is_calling = self.number_caller.is_calling_numbers_for_game(game_id)
                                     if not is_calling:
                                         logger.warning(f"Number caller not running for game {game_id}, forcing completion")
                                         await self.force_game_completion(game_id)
@@ -1136,9 +1147,9 @@ class GameManager20Birr:
                 winners_count_before = await self.get_winners_count(game_id)
                 logger.info(f"Current winners before adding: {winners_count_before}/2")
                 
+                # ==================== FIX: Use dedicated number caller ====================
                 if winners_count_before == 0 and game_status != 'winner_display':
-                    from utils.number_caller import number_caller
-                    await number_caller.stop_number_calling_for_game(game_id)
+                    await self.number_caller.stop_number_calling_for_game(game_id)
                     logger.info(f"Stopped number calling for game {game_id} (first winner)")
                 
                 called_numbers = await Database.get_drawn_numbers(game_id)
@@ -2124,7 +2135,8 @@ class GameManager20Birr:
         """Process bingo winner"""
         async with self._verification_lock:
             try:
-                from utils.number_caller import number_caller
+                # ==================== FIX: Use dedicated number caller ====================
+                from utils.number_caller import number_caller_20birr
                 
                 logger.info(f"🚀 BINGO VERIFICATION STARTING for user {user_id} in game {game_id} (20 birr tier)")
                 start_time = time.time()
@@ -2141,8 +2153,9 @@ class GameManager20Birr:
                 game_status = game.get('status', 'card_purchase')
                 winners_count_before = await self.get_winners_count(game_id)
                 
+                # ==================== FIX: Use dedicated number caller ====================
                 if winners_count_before == 0 and game_status != 'winner_display':
-                    await number_caller.stop_number_calling_for_game(game_id)
+                    await number_caller_20birr.stop_number_calling_for_game(game_id)
                 
                 user_card = await Database.get_user_card_in_game(user_id, game_id)
                 if not user_card:
@@ -3891,11 +3904,11 @@ class GameManager20Birr:
         """Force complete a game - for admin reset functionality"""
         try:
             from database.db import Database
-            from utils.number_caller import number_caller
             
             logger.warning(f"🛠️ Force completing game {game_id} (20 birr tier)")
             
-            await number_caller.stop_number_calling_for_game(game_id)
+            # ==================== FIX: Use dedicated number caller ====================
+            await self.number_caller.stop_number_calling_for_game(game_id)
             
             await Database.update_game_status(game_id, 'completed')
             await Database.update_game_phase(game_id, 'completed')

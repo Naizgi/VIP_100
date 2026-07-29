@@ -93,6 +93,9 @@
 # Fake winners now processed synchronously with thread pool to prevent race conditions
 # Added _execute_fake_winner_transaction for thread-safe DB operations
 # Added _generate_fallback_pattern helper method
+# ==================== FIXED: DEDICATED NUMBER CALLER FOR 10 BIRR TIER ====================
+# GameManager now uses its own dedicated number caller instance
+# Prevents cross-contamination with 20 birr tier
 # ============================================================
 
 import asyncio
@@ -118,6 +121,9 @@ except ImportError:
 # ==================== INTEGRATION: Import FakeUserManager ====================
 from database.db import Database
 from utils.fake_users import fake_user_manager, FakeUserManager
+
+# ==================== FIX: Import dedicated number caller for 10 birr tier ====================
+from utils.number_caller import number_caller_10birr
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +230,11 @@ class GameManager:
 
         self.INITIAL_DEPOSIT = 5
         
+        # ==================== FIX: DEDICATED NUMBER CALLER FOR 10 BIRR TIER ====================
+        self.number_caller = number_caller_10birr
+        self.number_caller.set_game_manager(self)
+        
+        logger.info(f"GameManager initialized with DEDICATED 10 birr number caller")
         logger.info(f"GameManager initialized with RANDOM FAKE PLAYERS ({self.min_fake_players}-{self.max_fake_players}) per game")
         logger.info(f"📇 Loaded {len(self.fixed_cards)} fixed cards for consistent gameplay")
     
@@ -260,14 +271,9 @@ class GameManager:
                     continue
                 
                 # Step 2: Run the CARD PURCHASE phase (30 seconds)
-                # purchase_successful = await self._run_card_purchase_phase(game_id)
-                
-                # if not purchase_successful:
-                #     logger.info(f"Purchase phase for game {game_id} was reset or interrupted")
-                #     continue
-                
                 remaning_count_down = await Database.get_game_countdown(game_id)
                 await asyncio.sleep(int(remaning_count_down))
+                
                 # Step 3: Check if we have enough players to start
                 if not await self._has_enough_players(game_id):
                     logger.info(f"Game {game_id} doesn't have enough players, resetting countdown")
@@ -316,6 +322,7 @@ class GameManager:
             cursor.execute("""
                 SELECT game_id FROM games 
                 WHERE status = 'card_purchase' AND current_phase = 'card_purchase'
+                AND card_price = 10
                 ORDER BY created_at DESC LIMIT 1
             """)
             existing = cursor.fetchone()
@@ -352,7 +359,8 @@ class GameManager:
                     status='card_purchase',
                     current_phase='card_purchase',
                     countdown_end=countdown_end,
-                    purchase_end_time=purchase_end_time
+                    purchase_end_time=purchase_end_time,
+                    card_price=10
                 )
                 
                 if game_id:
@@ -379,6 +387,7 @@ class GameManager:
                         'phase': 'card_purchase',
                         'countdown_seconds': 0,
                         'max_winners': self.max_winners,
+                        'card_price': 10,
                         'timestamp': datetime.now().isoformat()
                     }, game_id)
                     
@@ -417,6 +426,7 @@ class GameManager:
             'game_id': game_id,
             'phase': 'card_purchase',
             'duration': 30,
+            'card_price': 10,
             'timestamp': datetime.now().isoformat()
         }, game_id)
         
@@ -431,6 +441,7 @@ class GameManager:
                 'game_id': game_id,
                 'phase': 'card_purchase',
                 'seconds_remaining': seconds_remaining,
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }, game_id)
             end_time = time.time()
@@ -438,17 +449,6 @@ class GameManager:
                 await asyncio.sleep(1-max(end_time-start_time, 0))
         
         logger.info(f"⏰ Card purchase phase ended for game {game_id}")
-        
-        # FIXED: IMMEDIATELY check players and transition - NO DELAY
-        # Call has_enough_players which will update game state and broadcast
-        # has_players = await self._has_enough_players(game_id)
-        
-        # if has_players:
-        #     logger.info(f"✅ Game {game_id} transitioned to active phase INSTANTLY")
-        #     return True
-        # else:
-        #     logger.info(f"⚠️ Game {game_id} not enough players, resetting countdown")
-        #     return False
         return True
 
     async def _has_enough_players(self, game_id: str) -> bool:
@@ -503,12 +503,9 @@ class GameManager:
                 'fake_players': fake_players,
                 'total_players': total_players,
                 'prize_pool': final_prize_pool,
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }, game_id)
-            
-            # Start number calling for this game immediately (don't wait)
-            # from utils.number_caller import number_caller
-            # asyncio.create_task(number_caller.start_number_calling_for_game(game_id))
             
             logger.info(f"✅ Game {game_id} transitioned to active phase with {total_players} players")
             return True
@@ -526,6 +523,7 @@ class GameManager:
                 'game_id': game_id,
                 'message': 'Need at least 2 active players to start. Countdown reset to 30 seconds.',
                 'new_countdown': 30,
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }, game_id)
             
@@ -536,8 +534,8 @@ class GameManager:
         Run the active game phase (number calling)
         Returns: True if game ended with winner(s), False if error/forced end
         """
-        from utils.number_caller import number_caller
-        logger.info(f"🎯 Starting ACTIVE GAME phase for game {game_id}")
+        logger.info(f"🎯 Starting ACTIVE GAME phase for game {game_id} (10 birr tier)")
+        
         # Update game to active phase
         await Database.update_game_phase(game_id, 'active')
         await Database.update_game_status(game_id, 'active')
@@ -557,8 +555,8 @@ class GameManager:
         # Broadcast phase change
         await self._broadcast_full_game_state(game_id)
         
-        # Start number calling (this runs in background)
-        await number_caller.start_number_calling_for_game(game_id)
+        # ==================== FIX: Use dedicated number caller ====================
+        await self.number_caller.start_number_calling_for_game(game_id)
         
         # Monitor the game until it ends
         game_active = True
@@ -592,26 +590,21 @@ class GameManager:
                     game_active = False
                     break
             
-            # Check if number caller is still running
+            # ==================== FIX: Check dedicated number caller ====================
             try:
-                if hasattr(number_caller, 'is_calling_numbers_for_game'):
-                    if not number_caller.is_calling_numbers_for_game(game_id):
+                if hasattr(self.number_caller, 'is_calling_numbers_for_game'):
+                    if not self.number_caller.is_calling_numbers_for_game(game_id):
                         logger.warning(f"Number caller stopped for game {game_id}")
                         game_active = False
                         break
             except:
                 pass
             
-            # If winners count changed, broadcast update
-            # if winners_count != last_winner_count:
-            #     await self._broadcast_full_game_state(game_id)
-            #     last_winner_count = winners_count
-            
             # Wait before next check
             await asyncio.sleep(0.5)
         
-        # Stop number calling
-        await number_caller.stop_number_calling_for_game(game_id)
+        # ==================== FIX: Stop dedicated number caller ====================
+        await self.number_caller.stop_number_calling_for_game(game_id)
         
         # Check if we actually had any winners
         final_winners_count = await self.get_winners_count(game_id)
@@ -640,15 +633,13 @@ class GameManager:
         async with self._lock:
             self.active_game = await Database.get_game(game_id)
         
-        # Broadcast winner announcement (if not already broadcast)
-        # await self._broadcast_winners_if_needed(game_id)
-        
         # Countdown from 10 to 0
         for seconds_remaining in range(10, -1, -1):
             await self._safe_broadcast({
                 'type': 'winner_display_countdown',
                 'game_id': game_id,
                 'seconds_remaining': seconds_remaining,
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }, game_id)
             
@@ -688,7 +679,8 @@ class GameManager:
                 'pattern_type': w.get('pattern_type', 'BINGO'),
                 'prize_amount': payouts[i] if i < len(payouts) else 0,
                 'is_fake': w.get('is_fake', False),
-                'winner_number': i + 1
+                'winner_number': i + 1,
+                'card_price': 10
             }
             complete_winners_data.append(winner_complete)
         
@@ -701,6 +693,7 @@ class GameManager:
             'total_winners': len(all_winners),
             'is_final_winner': True,
             'winners': complete_winners_data,
+            'card_price': 10,
             'timestamp': datetime.now().isoformat(),
             'display_duration': 10
         }
@@ -747,6 +740,7 @@ class GameManager:
             'type': 'game_completed',
             'game_id': completed_game_id,
             'message': 'Game completed, preparing next round...',
+            'card_price': 10,
             'timestamp': datetime.now().isoformat()
         }, completed_game_id)
         
@@ -755,12 +749,11 @@ class GameManager:
     async def _emergency_cleanup(self, game_id: str):
         """Emergency cleanup for stuck games"""
         from database.db import Database
-        from utils.number_caller import number_caller
         
-        logger.warning(f"🚨 Emergency cleanup for game {game_id}")
+        logger.warning(f"🚨 Emergency cleanup for game {game_id} (10 birr tier)")
         
-        # Stop number calling
-        await number_caller.stop_number_calling_for_game(game_id)
+        # ==================== FIX: Use dedicated number caller ====================
+        await self.number_caller.stop_number_calling_for_game(game_id)
         
         # Force game to completed
         await Database.update_game_status(game_id, 'completed')
@@ -860,12 +853,13 @@ class GameManager:
                 
                 from database.db import Database
                 
-                # Get all non-completed games
+                # Get all non-completed games for 10 birr tier
                 with Database.get_cursor() as cursor:
                     cursor.execute("""
                         SELECT game_id, status, current_phase, created_at, started_at, completed_at
                         FROM games 
                         WHERE status NOT IN ('completed', 'archived')
+                        AND card_price = 10
                         ORDER BY created_at DESC
                     """)
                     rows = cursor.fetchall()
@@ -934,10 +928,9 @@ class GameManager:
                             if active_duration > 180:  # Active for more than 3 minutes
                                 logger.warning(f"Game {game_id} active for {active_duration:.0f}s with no winners")
                                 
-                                # Check if number caller is still running
-                                from utils.number_caller import number_caller
+                                # ==================== FIX: Use dedicated number caller ====================
                                 try:
-                                    is_calling = number_caller.is_calling_numbers_for_game(game_id)
+                                    is_calling = self.number_caller.is_calling_numbers_for_game(game_id)
                                     if not is_calling:
                                         logger.warning(f"Number caller not running for game {game_id}, forcing completion")
                                         await self.force_game_completion(game_id)
@@ -989,7 +982,7 @@ class GameManager:
                 
                 # FIX: Get active game with proper locking
                 async with self._lock:
-                    self.active_game = await Database.get_active_round_game()
+                    self.active_game = await Database.get_active_round_game_by_price(10)
                 
                 # CRITICAL FIX: Check for any stuck games in card_purchase phase
                 await self._recover_abandoned_games()
@@ -1067,6 +1060,7 @@ class GameManager:
                     'total_players': total_players,
                     'prize_pool': correct_prize_pool,
                     'max_players': 400,
+                    'card_price': 10,
                     'timestamp': datetime.now().isoformat()
                 }, game_id)
                 
@@ -1127,6 +1121,7 @@ class GameManager:
                 'total_players': total_players,
                 'max_players': 400,
                 'fake_players_remaining': fake_players,
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }, game_id)
             
@@ -1174,6 +1169,7 @@ class GameManager:
                 'fake_players': fake_players,
                 'total_players': total_players,
                 'max_players': 400,
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }, game_id)
             
@@ -1252,7 +1248,8 @@ class GameManager:
                     'game_phase': game.get('current_phase'),
                     'game_status': game.get('status'),
                     'round_number': game.get('round_number', 1),
-                    'countdown_remaining': game.get('countdown_remaining', 0)
+                    'countdown_remaining': game.get('countdown_remaining', 0),
+                    'card_price': 10
                 },
                 'timestamp': datetime.now().isoformat()
             }, game_id)
@@ -1448,8 +1445,8 @@ class GameManager:
                 
                 # Stop number calling on first winner only
                 if winners_count_before == 0 and game_status != 'winner_display':
-                    from utils.number_caller import number_caller
-                    await number_caller.stop_number_calling_for_game(game_id)
+                    # ==================== FIX: Use dedicated number caller ====================
+                    await self.number_caller.stop_number_calling_for_game(game_id)
                     logger.info(f"Stopped number calling for game {game_id} (first winner)")
                 
                 # # Get called numbers for verification
@@ -1511,7 +1508,8 @@ class GameManager:
                     'username': username,
                     'full_name': full_name,
                     'winning_pattern': winning_pattern,
-                    'pattern_type': pattern_type
+                    'pattern_type': pattern_type,
+                    'card_price': 10
                 }
                 
                 # Add to winners list (async operation with winner_lock)
@@ -1548,7 +1546,7 @@ class GameManager:
                 if winner_payout > 0:
                     await Database.add_to_house_balance(
                         amount=winner_payout,
-                        description=f'Fake winner #{winners_count} in game {game_id} ({pattern_type})',
+                        description=f'Fake winner #{winners_count} in game {game_id} ({pattern_type}) - 10 birr tier',
                         game_id=game_id
                     )
                     logger.info(f"🏦 Added {winner_payout} birr to house balance from fake winner")          
@@ -1581,7 +1579,8 @@ class GameManager:
                         'pattern_type': w.get('pattern_type', 'BINGO'),
                         'prize_amount': final_payouts[i] if i < len(final_payouts) else 0,
                         'is_fake': w.get('is_fake', False),
-                        'winner_number': i + 1
+                        'winner_number': i + 1,
+                        'card_price': 10
                     }
                     complete_winners_data.append(winner_complete)
                 
@@ -1596,6 +1595,7 @@ class GameManager:
                     'winners': complete_winners_data,
                     'timestamp': datetime.now().isoformat(),
                     'state_version': self._game_state_versions.get(game_id, 1),
+                    'card_price': 10,
                     'fake_player_stats': {
                         'min_fake_players': self.min_fake_players,
                         'max_fake_players': self.max_fake_players,
@@ -1638,10 +1638,6 @@ class GameManager:
                     if user_id in self.fake_user_manager.game_fake_cards[game_id]:
                         self.fake_user_manager.game_fake_cards[game_id][user_id]['is_winner'] = True
                 
-                # If this is the SECOND winner (game complete), record final details
-                # if len(final_all_winners) >= self.max_winners:
-                #     logger.info(f"🏆 Game {game_id} ending with {winners_count} winner(s). Finalizing...")
-                  
                 # Record game details with all winners
                 await self._record_complete_game_details(
                     game_id=game_id,
@@ -1667,7 +1663,8 @@ class GameManager:
                     'total_winners': len(final_all_winners),
                     'is_final': len(final_all_winners) >= self.max_winners,
                     'is_fake': True,
-                    'money_to_house': winner_payout
+                    'money_to_house': winner_payout,
+                    'card_price': 10
                 }
                 
         except Exception as e:
@@ -1814,15 +1811,15 @@ class GameManager:
     # ==================== END: Two winner support ====================
     
     async def _recover_abandoned_games(self):
-        """Recover games that were abandoned in card_purchase phase"""
+        """Recover games that were abandoned in card_purchase phase for 10 birr tier"""
         try:
             from database.db import Database
             
-            # Get all games in card_purchase phase
-            card_purchase_games = await Database.get_games_by_status('card_purchase')
+            # Get all games in card_purchase phase for 10 birr tier
+            card_purchase_games = await Database.get_games_by_status_and_price('card_purchase', 10)
             
             if len(card_purchase_games) > 1:
-                logger.warning(f"Found {len(card_purchase_games)} games in card_purchase phase. Need to recover...")
+                logger.warning(f"Found {len(card_purchase_games)} games in card_purchase phase for 10 birr tier. Need to recover...")
                 
                 # Sort by creation time (oldest first)
                 card_purchase_games.sort(key=lambda x: x.get('created_at', datetime.min))
@@ -2141,7 +2138,8 @@ class GameManager:
                 'winners': winners,  # Now includes prize_amount for each winner
                 'can_add_more_winners': winners_count < self.max_winners,
                 'game_completed': game_id in self._completed_games,
-                'state_version': self._game_state_versions.get(game_id, 1)
+                'state_version': self._game_state_versions.get(game_id, 1),
+                'card_price': 10
             }
 
         except Exception as e:
@@ -2240,6 +2238,7 @@ class GameManager:
                     'fake_players': fake_players,
                     'total_players': total_players,
                     'max_players': 400,
+                    'card_price': 10,
                     'timestamp': datetime.now().isoformat()
                 }, game_id)
              
@@ -2248,7 +2247,7 @@ class GameManager:
   
                 return {
                     'success': True,
-                    'message': f'Card #{card_index} purchased successfully!',
+                    'message': f'Card #{card_index} purchased successfully! (10 birr)',
                     'card_id': card_id,
                     'card_index': card_index,
                     'card_numbers': card_numbers,
@@ -2257,7 +2256,8 @@ class GameManager:
                     'real_players': real_players,
                     'fake_players': fake_players,
                     'total_players': total_players,
-                    'max_players': 400
+                    'max_players': 400,
+                    'card_price': 10
                 }
  
             else:  # action == 'refund'
@@ -2307,6 +2307,7 @@ class GameManager:
                     'fake_players': fake_players,
                     'total_players': total_players,
                     'max_players': 400,
+                    'card_price': 10,
                     'timestamp': datetime.now().isoformat()
                 }, game_id)
               
@@ -2317,13 +2318,14 @@ class GameManager:
    
                 return {
                     'success': True,
-                    'message': f'Card #{card_index} refunded successfully!',
+                    'message': f'Card #{card_index} refunded successfully! ({refund_amount} birr)',
                     'refund_amount': refund_amount,
                     'prize_pool': correct_prize_pool,
                     'new_balance': new_balance,
                     'real_players': real_players,
                     'fake_players': fake_players,
-                    'total_players': total_players
+                    'total_players': total_players,
+                    'card_price': 10
                 }
 
         except Exception as e:
@@ -2581,9 +2583,10 @@ class GameManager:
         """Process bingo winner - UPDATED: Two winner support with 50-50 split and TRUE claims"""
         async with self._verification_lock:
             try:
-                from utils.number_caller import number_caller
+                # ==================== FIX: Use dedicated number caller ====================
+                from utils.number_caller import number_caller_10birr
                 
-                logger.info(f"🚀 BINGO VERIFICATION STARTING for user {user_id} in game {game_id}")
+                logger.info(f"🚀 BINGO VERIFICATION STARTING for user {user_id} in game {game_id} (10 birr tier)")
                 start_time = time.time()
                 
                 # Get game details (async DB operation)
@@ -2603,7 +2606,7 @@ class GameManager:
                 
                 # Stop number calling on first winner only
                 if winners_count_before == 0 and game_status != 'winner_display':
-                    await number_caller.stop_number_calling_for_game(game_id)
+                    await number_caller_10birr.stop_number_calling_for_game(game_id)
                 
                 # Get user card (async DB operation)
                 user_card = await Database.get_user_card_in_game(user_id, game_id)
@@ -2658,6 +2661,7 @@ class GameManager:
                     'winning_pattern': winning_pattern if winning_pattern else [],
                     'pattern_type': pattern_type,
                     'is_fake': False,
+                    'card_price': 10,
                     'timestamp': datetime.now().isoformat()
                 }
                 
@@ -2765,7 +2769,8 @@ class GameManager:
                         'pattern_type': w.get('pattern_type', 'BINGO'),
                         'prize_amount': final_payouts[i] if i < len(final_payouts) else 0,
                         'is_fake': w.get('is_fake', False),
-                        'winner_number': i + 1
+                        'winner_number': i + 1,
+                        'card_price': 10
                     }
                     complete_winners_data.append(winner_complete)
                 
@@ -2778,6 +2783,7 @@ class GameManager:
                     'total_winners': len(final_all_winners),
                     'is_final_winner': len(final_all_winners) >= self.max_winners,
                     'winners': complete_winners_data,
+                    'card_price': 10,
                     'timestamp': datetime.now().isoformat(),
                     'state_version': self._game_state_versions.get(game_id, 1),
                     'fake_player_stats': {
@@ -2867,7 +2873,8 @@ class GameManager:
                     'is_final': len(all_winners) >= self.max_winners,
                     'real_players': real_players,
                     'fake_players': fake_count,
-                    'total_players': total_players
+                    'total_players': total_players,
+                    'card_price': 10
                 }
                 
             except Exception as e:
@@ -2901,7 +2908,7 @@ class GameManager:
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     user_id, winner_payout, new_balance, 'winning',
-                    f'BINGO win #{winners_count} in game {game_id} (Pattern: {pattern_type}, Prize: {winner_payout:.2f} birr)',
+                    f'BINGO win #{winners_count} in game {game_id} (Pattern: {pattern_type}, Prize: {winner_payout:.2f} birr) - 10 birr tier',
                     game_id, datetime.now()
                 ))
                 
@@ -3018,7 +3025,7 @@ class GameManager:
                     VALUES (?, 'game_commission', ?, ?, ?)
                 """, (
                     commission,
-                    f'Commission from game {game_id} ({real_players} players, {eligible_count} used initial)',
+                    f'Commission from game {game_id} ({real_players} players, {eligible_count} used initial) - 10 birr tier',
                     game_id,
                     datetime.now()
                 ))
@@ -3048,32 +3055,6 @@ class GameManager:
         except Exception as e:
             logger.error(f"Error validating prize pool: {e}")
             return current_prize_pool
-    
-    # async def _monitor_winner_display_countdown(self, game_id: str, winner_display_end: datetime):
-    #     """Monitor winner display countdown - backup for main loop"""
-    #     try:
-    #         logger.info(f"⏱️ Starting winner display monitor backup for game {game_id}")
-            
-    #         from database.db import Database
-            
-    #         # Calculate initial wait time
-    #         current_time = datetime.now()
-    #         if winner_display_end > current_time:
-    #             wait_time = (winner_display_end - current_time).total_seconds()
-    #             await asyncio.sleep(wait_time)
-            
-    #         # If game is still in winner_display after wait, log but don't force (main loop handles it)
-    #         game = await Database.get_game(game_id)
-    #         if game and game.get('status') == 'winner_display':
-    #             logger.info(f"Winner display should be ending for game {game_id}")
-            
-    #     except asyncio.CancelledError:
-    #         logger.info(f"Winner display monitor backup cancelled for game {game_id}")
-    #     except Exception as e:
-    #         logger.error(f"Error in winner display monitor backup for game {game_id}: {e}")
-    #     finally:
-    #         if game_id in self._winner_display_tasks:
-    #             del self._winner_display_tasks[game_id]
     
     # ==================== FIXED: Record complete game details with correct commission - FIXED DATABASE ERROR ====================
     async def _record_complete_game_details(self, game_id: str, winners: List[Dict], prize_pool: float, 
@@ -3272,7 +3253,7 @@ class GameManager:
                     VALUES (?, 'game_commission', ?, ?, ?)
                 """, (
                     commission,
-                    f'Commission from game {game_id} ({real_players} real players)',
+                    f'Commission from game {game_id} ({real_players} real players) - 10 birr tier',
                     game_id,
                     datetime.now()
                 ))
@@ -3362,7 +3343,7 @@ class GameManager:
                     VALUES (?, 'game_commission', ?, ?, ?)
                 """, (
                     commission,
-                    f'FAKE WINNER COMMISSION from game {game_id} ({real_players} real players × 10)',
+                    f'FAKE WINNER COMMISSION from game {game_id} ({real_players} real players × 10) - 10 birr tier',
                     game_id,
                     datetime.now()
                 ))
@@ -3375,6 +3356,7 @@ class GameManager:
         except Exception as e:
             logger.error(f"❌ Error recording fake winner commission for {game_id}: {e}", exc_info=True)
             return False
+            
     async def calculate_fake_winner_commission(self, game_id: str) -> float:
         """
         Calculate commission with initial balance logic.
@@ -3453,6 +3435,7 @@ class GameManager:
         except Exception as e:
             logger.error(f"❌ Error calculating commission: {e}", exc_info=True)
             return 0.0
+            
     async def _fast_verify_bingo_with_pattern(self, user_card, called_numbers):
         """
         ULTRA-FAST bingo verification using bitmask operations
@@ -3953,7 +3936,8 @@ class GameManager:
                     },
                     'recovery_in_progress': self._recovery_in_progress,
                     'completed_games': len(self._completed_games),
-                    'game_state_versions': self._game_state_versions
+                    'game_state_versions': self._game_state_versions,
+                    'card_price': 10
                 },
                 'fake_user_manager': {
                     'fake_users_count': len(self.fake_user_manager.fake_users),
@@ -3994,7 +3978,7 @@ class GameManager:
         async with self._lock:
             try:
                 from database.db import Database
-                self.active_game = await Database.get_active_round_game()
+                self.active_game = await Database.get_active_round_game_by_price(10)
                 
                 # Re-initialize winner tracking for active game
                 if self.active_game:
@@ -4088,6 +4072,7 @@ class GameManager:
                 "winners_count": winners_count,
                 "can_add_winner": can_add,
                 "max_winners": self.max_winners,
+                "card_price": 10,
                 "fake_players": {
                     "current": fake_count,
                     "min": self.min_fake_players,
@@ -4150,7 +4135,8 @@ class GameManager:
                         'winner_display_seconds': 10 if winners_count == 1 else 0,
                         'winner_number': result.get('winner_number'),
                         'total_winners': result.get('total_winners'),
-                        'is_final': result.get('is_final', False)
+                        'is_final': result.get('is_final', False),
+                        'card_price': 10
                     }
                 else:
                     return {'success': False, 'message': 'Failed to process winner'}
@@ -4171,7 +4157,7 @@ class GameManager:
         try:
             from database.db import Database
             
-            logger.info(f"🚨 IMMEDIATE BINGO CLAIM from user {user_id} in game {game_id}")
+            logger.info(f"🚨 IMMEDIATE BINGO CLAIM from user {user_id} in game {game_id} (10 birr tier)")
             
             # Get game status immediately
             game = await Database.get_game(game_id)
@@ -4310,6 +4296,7 @@ class GameManager:
                 winner = await self._ensure_winner_card_numbers(game_id, winner)
                 formatted_winner = winner.copy()
                 formatted_winner['prize_amount'] = payouts[i] if i < len(payouts) else 0
+                formatted_winner['card_price'] = 10
                 formatted_winners.append(formatted_winner)
             
             # Get countdown
@@ -4351,6 +4338,7 @@ class GameManager:
                 'fake_users_enabled': self.fake_users_enabled,
                 'game_completed': game_id in self._completed_games,
                 'state_version': self._game_state_versions.get(game_id, 1),
+                'card_price': 10,
                 'timestamp': datetime.now().isoformat()
             }
         except Exception as e:
@@ -4397,7 +4385,8 @@ class GameManager:
                 'fake_users_enabled': self.fake_users_enabled,
                 'min_fake_players': self.min_fake_players,
                 'max_fake_players': self.max_fake_players,
-                'message': f'Fake users {"enabled" if enabled else "disabled"}'
+                'card_price': 10,
+                'message': f'Fake users {"enabled" if enabled else "disabled"} for 10 birr tier'
             }
         except Exception as e:
             logger.error(f"Error setting fake users enabled: {e}")
@@ -4434,7 +4423,8 @@ class GameManager:
                 'max_fake_players': self.max_fake_players,
                 'old_min_fake_players': old_min,
                 'old_max_fake_players': old_max,
-                'message': f'Fake player range set to min={min_fake}, max={max_fake}'
+                'card_price': 10,
+                'message': f'Fake player range set to min={min_fake}, max={max_fake} for 10 birr tier'
             }
         except Exception as e:
             logger.error(f"Error setting fake player range: {e}")
@@ -4454,7 +4444,8 @@ class GameManager:
             return {
                 'success': True,
                 'auto_start_games': self.auto_start_games,
-                'message': f'Auto-start games {"enabled" if auto_start else "disabled"}'
+                'card_price': 10,
+                'message': f'Auto-start games {"enabled" if auto_start else "disabled"} for 10 birr tier'
             }
         except Exception as e:
             logger.error(f"Error setting auto-start games: {e}")
@@ -4491,6 +4482,7 @@ class GameManager:
                 'total_fake_users': len(self.fake_user_manager.fake_users),
                 'active_fake_cards': active_fake_cards,
                 'total_active_fake_cards': sum(active_fake_cards.values()),
+                'card_price': 10,
                 'current_game': {
                     'game_id': self.active_game.get('game_id') if self.active_game else None,
                     'fake_players': current_game_fake,
@@ -4570,7 +4562,8 @@ class GameManager:
                 'prize_pool': prize_pool if 'prize_pool' in locals() else 0,
                 'expected_cards_from_prize': expected_cards_from_prize if 'expected_cards_from_prize' in locals() else 0,
                 'fake_cards_in_memory': fake_memory,
-                'fake_players_finalized': self._fake_players_finalized.get(game_id, False)
+                'fake_players_finalized': self._fake_players_finalized.get(game_id, False),
+                'card_price': 10
             }
             
         except Exception as e:
@@ -4598,7 +4591,8 @@ class GameManager:
                 'success': True,
                 'max_winners': self.max_winners,
                 'old_max_winners': old_max,
-                'message': f'Maximum winners per game set to {max_winners}'
+                'card_price': 10,
+                'message': f'Maximum winners per game set to {max_winners} for 10 birr tier'
             }
         except Exception as e:
             logger.error(f"Error setting max winners: {e}")
@@ -4616,7 +4610,8 @@ class GameManager:
                 'success': True,
                 'max_winners': self.max_winners,
                 'current_game_winners': current_game_winners,
-                'can_add_more': current_game_winners < self.max_winners
+                'can_add_more': current_game_winners < self.max_winners,
+                'card_price': 10
             }
         except Exception as e:
             logger.error(f"Error getting winner configuration: {e}")
@@ -4628,12 +4623,11 @@ class GameManager:
         """Force complete a game - for admin reset functionality"""
         try:
             from database.db import Database
-            from utils.number_caller import number_caller
             
-            logger.warning(f"🛠️ Force completing game {game_id}")
+            logger.warning(f"🛠️ Force completing game {game_id} (10 birr tier)")
             
-            # Stop number calling
-            await number_caller.stop_number_calling_for_game(game_id)
+            # ==================== FIX: Use dedicated number caller ====================
+            await self.number_caller.stop_number_calling_for_game(game_id)
             
             # Update game status
             await Database.update_game_status(game_id, 'completed')
