@@ -37,7 +37,6 @@
             --bingo-g: #e10bcb;
             --bingo-o: #0c5f21;
             
-            /* Winner Screen Colors */
             --winner-bg: #D7C3E6;
             --winner-orange: #F57C00;
             --winner-board-bg: #D8C4E6;
@@ -92,24 +91,24 @@
         .game-stats {
             background: var(--panel-bg);
             border-radius: 8px;
-            padding: 4px 6px;
-            margin-bottom: 6px;
+            padding: 6px 8px;
+            margin-bottom: 8px;
             display: flex;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
             justify-content: space-between;
             align-items: center;
-            gap: 2px;
+            gap: 4px;
             border: 1px solid var(--border-color);
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            min-height: 44px;
+            min-height: 52px;
             width: 100%;
         }
         
         .stat-item {
             text-align: center;
-            padding: 2px 3px;
+            padding: 3px 5px;
             background: rgba(0, 0, 0, 0.3);
             border-radius: 4px;
             display: flex;
@@ -119,8 +118,8 @@
             cursor: pointer;
             transition: all 0.2s ease;
             flex: 0 1 auto;
-            min-width: 30px;
-            max-width: 100px;
+            min-width: 40px;
+            max-width: 120px;
             white-space: nowrap;
         }
         
@@ -134,15 +133,15 @@
         }
         
         .stat-label {
-            font-size: 7px;
+            font-size: 8px;
             opacity: 0.8;
-            margin-bottom: 1px;
+            margin-bottom: 2px;
             white-space: nowrap;
-            line-height: 1.1;
+            line-height: 1.2;
         }
         
         .stat-value {
-            font-size: 10px;
+            font-size: 13px;
             font-weight: 600;
             color: var(--secondary) !important;
             transition: color 0.1s ease;
@@ -151,22 +150,22 @@
         
         .stat-item.leave-stat {
             flex: 0 0 auto;
-            min-width: 28px;
-            padding: 2px 3px;
+            min-width: 34px;
+            padding: 3px 4px;
             cursor: pointer;
         }
         
         .stat-item.leave-stat .stat-value {
-            font-size: 10px !important;
+            font-size: 13px !important;
         }
         
         .stat-item.leave-stat .stat-label {
-            font-size: 6px !important;
+            font-size: 7px !important;
             opacity: 0.6;
         }
         
         .countdown-timer {
-            font-size: 11px;
+            font-size: 14px;
             font-weight: 700;
             color: var(--secondary) !important;
             text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
@@ -184,7 +183,7 @@
             height: 2px;
             background: rgba(255, 255, 255, 0.1);
             border-radius: 1px;
-            margin-top: 1px;
+            margin-top: 2px;
             overflow: hidden;
         }
         
@@ -623,7 +622,7 @@
             padding: 12px;
             background: var(--panel-bg);
             border-radius: 10px;
-            border: 1px solid var(--border-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .cards-selection {
@@ -841,7 +840,7 @@
             transition: background-color 0.08s ease, transform 0.08s ease, box-shadow 0.08s ease;
         }
         
-        /* ==================== WINNER ANNOUNCEMENT - MATCHING UI SPEC ==================== */
+        /* ==================== WINNER ANNOUNCEMENT ==================== */
         .winner-display {
             position: fixed;
             top: 0;
@@ -863,7 +862,6 @@
             display: flex;
         }
         
-        /* Winner Banner - Full width, fixed at top */
         .winner-banner {
             width: 100%;
             background: var(--winner-orange);
@@ -907,7 +905,6 @@
             display: inline-block;
         }
         
-        /* Player Board Container */
         .winner-board-container {
             width: 90%;
             max-width: 420px;
@@ -919,7 +916,6 @@
             flex-shrink: 0;
         }
         
-        /* Bingo Header Row */
         .winner-header-row {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -944,7 +940,6 @@
         .winner-header-cell:nth-child(4) { background: var(--winner-red); }
         .winner-header-cell:nth-child(5) { background: var(--winner-purple); }
         
-        /* Number Grid */
         .winner-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -988,7 +983,6 @@
             color: var(--winner-dark);
         }
         
-        /* Board Footer */
         .winner-board-footer {
             text-align: center;
             font-size: 14px;
@@ -998,7 +992,6 @@
             margin-top: 10px;
         }
         
-        /* Countdown Button */
         .winner-countdown-btn {
             width: 90%;
             max-width: 420px;
@@ -1239,41 +1232,41 @@
             }
             
             .game-stats {
-                padding: 3px 4px;
-                min-height: 36px;
-                gap: 1.5px;
+                padding: 5px 6px;
+                min-height: 44px;
+                gap: 3px;
             }
             
             .stat-item {
-                padding: 1px 2px;
-                min-width: 24px;
-                max-width: 70px;
+                padding: 2px 4px;
+                min-width: 32px;
+                max-width: 85px;
             }
             
             .stat-label {
-                font-size: 6px;
-                margin-bottom: 0;
+                font-size: 7px;
+                margin-bottom: 1px;
             }
             
             .stat-value {
-                font-size: 8px;
+                font-size: 11px;
             }
             
             .stat-item.leave-stat {
-                min-width: 22px;
-                padding: 1px 2px;
+                min-width: 28px;
+                padding: 2px 3px;
             }
             
             .stat-item.leave-stat .stat-value {
-                font-size: 8px !important;
+                font-size: 11px !important;
             }
             
             .stat-item.leave-stat .stat-label {
-                font-size: 5px !important;
+                font-size: 6px !important;
             }
             
             .countdown-timer {
-                font-size: 9px;
+                font-size: 12px;
             }
             
             .current-called-letter-number {
@@ -1410,41 +1403,41 @@
         
         @media (max-width: 480px) {
             .game-stats {
-                padding: 2px 3px;
-                min-height: 32px;
-                gap: 1px;
+                padding: 4px 4px;
+                min-height: 38px;
+                gap: 2px;
             }
             
             .stat-item {
-                padding: 1px 2px;
-                min-width: 20px;
-                max-width: 55px;
+                padding: 2px 3px;
+                min-width: 26px;
+                max-width: 70px;
             }
             
             .stat-label {
-                font-size: 5px;
-                margin-bottom: 0;
+                font-size: 6px;
+                margin-bottom: 1px;
             }
             
             .stat-value {
-                font-size: 7px;
+                font-size: 10px;
             }
             
             .stat-item.leave-stat {
-                min-width: 20px;
-                padding: 1px 2px;
+                min-width: 24px;
+                padding: 2px 3px;
             }
             
             .stat-item.leave-stat .stat-value {
-                font-size: 7px !important;
+                font-size: 10px !important;
             }
             
             .stat-item.leave-stat .stat-label {
-                font-size: 4px !important;
+                font-size: 5px !important;
             }
             
             .countdown-timer {
-                font-size: 8px;
+                font-size: 11px;
             }
             
             .game-grid-container {
@@ -1586,33 +1579,33 @@
 
         @media (max-width: 360px) {
             .game-stats {
-                padding: 2px 2px;
-                min-height: 28px;
-                gap: 1px;
+                padding: 3px 3px;
+                min-height: 34px;
+                gap: 1.5px;
             }
             
             .stat-item {
-                padding: 1px 1.5px;
-                min-width: 16px;
-                max-width: 45px;
+                padding: 1px 2px;
+                min-width: 22px;
+                max-width: 55px;
             }
             
             .stat-label {
-                font-size: 4px;
+                font-size: 5px;
                 margin-bottom: 0;
             }
             
             .stat-value {
-                font-size: 6px;
+                font-size: 9px;
             }
             
             .stat-item.leave-stat {
-                min-width: 16px;
-                padding: 1px 1.5px;
+                min-width: 20px;
+                padding: 1px 2px;
             }
             
             .stat-item.leave-stat .stat-value {
-                font-size: 6px !important;
+                font-size: 9px !important;
             }
             
             .stat-item.leave-stat .stat-label {
@@ -1620,7 +1613,7 @@
             }
             
             .countdown-timer {
-                font-size: 7px;
+                font-size: 10px;
             }
             
             .game-grid-container {
@@ -1763,22 +1756,22 @@
         
         @media (max-width: 767px) and (orientation: landscape) {
             .game-stats {
-                padding: 2px 4px;
-                min-height: 30px;
+                padding: 4px 6px;
+                min-height: 38px;
             }
             
             .stat-item {
-                padding: 1px 3px;
-                min-width: 20px;
-                max-width: 60px;
+                padding: 2px 4px;
+                min-width: 28px;
+                max-width: 75px;
             }
             
             .stat-label {
-                font-size: 5px;
+                font-size: 6px;
             }
             
             .stat-value {
-                font-size: 7px;
+                font-size: 10px;
             }
             
             .game-grid-container {
@@ -1854,22 +1847,22 @@
             }
             
             .game-stats {
-                padding: 4px 8px;
-                min-height: 44px;
+                padding: 6px 10px;
+                min-height: 52px;
             }
             
             .stat-item {
-                padding: 2px 6px;
-                min-width: 35px;
-                max-width: 100px;
+                padding: 3px 8px;
+                min-width: 45px;
+                max-width: 120px;
             }
             
             .stat-label {
-                font-size: 7px;
+                font-size: 9px;
             }
             
             .stat-value {
-                font-size: 10px;
+                font-size: 14px;
             }
             
             .game-grid-container {
@@ -2018,9 +2011,8 @@
         <span id="notification-message">Success!</span>
     </div>
     
-    <!-- ==================== WINNER ANNOUNCEMENT - MATCHING UI SPEC ==================== -->
+    <!-- ==================== WINNER ANNOUNCEMENT ==================== -->
     <div class="winner-display" id="winner-announcement">
-        <!-- Winner Banner - Orange, Full Width -->
         <div class="winner-banner">
             <div class="winner-title">BINGO!</div>
             <div class="winner-message">
@@ -2029,9 +2021,7 @@
             </div>
         </div>
         
-        <!-- Player Board Container -->
         <div class="winner-board-container">
-            <!-- Bingo Header Row -->
             <div class="winner-header-row">
                 <div class="winner-header-cell">B</div>
                 <div class="winner-header-cell">I</div>
@@ -2040,14 +2030,11 @@
                 <div class="winner-header-cell">O</div>
             </div>
             
-            <!-- Number Grid -->
             <div class="winner-grid" id="winner-grid"></div>
             
-            <!-- Board Footer -->
             <div class="winner-board-footer" id="winner-board-number">Board number 11</div>
         </div>
         
-        <!-- Countdown Button -->
         <button class="winner-countdown-btn" id="winner-countdown-btn">
             <span id="winner-countdown-number">4</span>
             <span class="seconds-text">seconds</span>
@@ -4146,13 +4133,12 @@
             showWinnerAnnouncementScreen(gameState.winnerData);
         }
 
-        // ==================== SHOW WINNER ANNOUNCEMENT - MATCHING UI SPEC ====================
+        // ==================== SHOW WINNER ANNOUNCEMENT ====================
         function showWinnerAnnouncementScreen(winnerData) {
             const announcement = document.getElementById("winner-announcement");
             const gridContainer = document.getElementById("winner-grid");
             const boardNumberEl = document.getElementById("winner-board-number");
             const usernameEl = document.getElementById("winner-username");
-            const countdownBtn = document.getElementById("winner-countdown-btn");
             const countdownNumberEl = document.getElementById("winner-countdown-number");
 
             if (!announcement) {
@@ -4176,25 +4162,21 @@
 
             console.log("Displaying winner with data:", winnerData);
 
-            // Set winner username
             const winnerName = winnerData.full_name || winnerData.username || "Chicha";
             if (usernameEl) {
                 usernameEl.textContent = winnerName;
             }
 
-            // Set board number
             const boardNumber = winnerData.card_index || 11;
             if (boardNumberEl) {
                 boardNumberEl.textContent = `Board number ${boardNumber}`;
             }
 
-            // Set countdown number
             const countdownSeconds = 10;
             if (countdownNumberEl) {
                 countdownNumberEl.textContent = countdownSeconds;
             }
 
-            // Build the BINGO card grid
             if (gridContainer) {
                 gridContainer.innerHTML = "";
                 
@@ -4241,10 +4223,7 @@
                 }
             }
 
-            // Show announcement
             announcement.classList.add("active");
-
-            // Start countdown
             startWinnerDisplayCountdown(winnerData.game_id, countdownSeconds);
         }
 
@@ -4258,7 +4237,6 @@
             gameState.winnerDisplayCountdown = durationSeconds;
             
             const countdownNumberEl = document.getElementById("winner-countdown-number");
-            const timerElement = document.getElementById("winner-announcement-timer");
             
             if (countdownNumberEl) {
                 countdownNumberEl.textContent = durationSeconds;
