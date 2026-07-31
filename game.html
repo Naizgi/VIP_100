@@ -84,28 +84,28 @@
         min-width: 320px;
     }
     
-    /* Game Stats - Fixed to 1 row horizontally */
+    /* Game Stats - Fixed to 1 row horizontally - INCREASED TEXT SIZES */
     .game-stats {
         background: var(--panel-bg);
         border-radius: 8px;
-        padding: 4px 6px;
-        margin-bottom: 6px;
+        padding: 6px 8px;
+        margin-bottom: 8px;
         display: flex;
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         justify-content: space-between;
         align-items: center;
-        gap: 2px;
+        gap: 4px;
         border: 1px solid var(--border-color);
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        min-height: 44px;
+        min-height: 52px;
         width: 100%;
     }
     
     .stat-item {
         text-align: center;
-        padding: 2px 3px;
+        padding: 3px 5px;
         background: rgba(0, 0, 0, 0.3);
         border-radius: 4px;
         display: flex;
@@ -115,8 +115,8 @@
         cursor: pointer;
         transition: all 0.2s ease;
         flex: 0 1 auto;
-        min-width: 30px;
-        max-width: 100px;
+        min-width: 40px;
+        max-width: 120px;
         white-space: nowrap;
     }
     
@@ -130,15 +130,15 @@
     }
     
     .stat-label {
-        font-size: 7px;
+        font-size: 8px;
         opacity: 0.8;
-        margin-bottom: 1px;
+        margin-bottom: 2px;
         white-space: nowrap;
-        line-height: 1.1;
+        line-height: 1.2;
     }
     
     .stat-value {
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--secondary) !important;
         transition: color 0.1s ease;
@@ -148,22 +148,22 @@
     /* Leave button stat item */
     .stat-item.leave-stat {
         flex: 0 0 auto;
-        min-width: 28px;
-        padding: 2px 3px;
+        min-width: 34px;
+        padding: 3px 4px;
         cursor: pointer;
     }
     
     .stat-item.leave-stat .stat-value {
-        font-size: 10px !important;
+        font-size: 13px !important;
     }
     
     .stat-item.leave-stat .stat-label {
-        font-size: 6px !important;
+        font-size: 7px !important;
         opacity: 0.6;
     }
     
     .countdown-timer {
-        font-size: 11px;
+        font-size: 14px;
         font-weight: 700;
         color: var(--secondary) !important;
         text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
@@ -182,7 +182,7 @@
         height: 2px;
         background: rgba(255, 255, 255, 0.1);
         border-radius: 1px;
-        margin-top: 1px;
+        margin-top: 2px;
         overflow: hidden;
     }
     
@@ -1338,41 +1338,41 @@
         }
         
         .game-stats {
-            padding: 3px 4px;
-            min-height: 36px;
-            gap: 1.5px;
+            padding: 5px 6px;
+            min-height: 44px;
+            gap: 3px;
         }
         
         .stat-item {
-            padding: 1px 2px;
-            min-width: 24px;
-            max-width: 70px;
+            padding: 2px 4px;
+            min-width: 32px;
+            max-width: 85px;
         }
         
         .stat-label {
-            font-size: 6px;
-            margin-bottom: 0;
+            font-size: 7px;
+            margin-bottom: 1px;
         }
         
         .stat-value {
-            font-size: 8px;
+            font-size: 11px;
         }
         
         .stat-item.leave-stat {
-            min-width: 22px;
-            padding: 1px 2px;
+            min-width: 28px;
+            padding: 2px 3px;
         }
         
         .stat-item.leave-stat .stat-value {
-            font-size: 8px !important;
+            font-size: 11px !important;
         }
         
         .stat-item.leave-stat .stat-label {
-            font-size: 5px !important;
+            font-size: 6px !important;
         }
         
         .countdown-timer {
-            font-size: 9px;
+            font-size: 12px;
         }
         
         .current-called-letter-number {
@@ -1493,41 +1493,41 @@
     
     @media (max-width: 480px) {
         .game-stats {
-            padding: 2px 3px;
-            min-height: 32px;
-            gap: 1px;
+            padding: 4px 4px;
+            min-height: 38px;
+            gap: 2px;
         }
         
         .stat-item {
-            padding: 1px 2px;
-            min-width: 20px;
-            max-width: 55px;
+            padding: 2px 3px;
+            min-width: 26px;
+            max-width: 70px;
         }
         
         .stat-label {
-            font-size: 5px;
-            margin-bottom: 0;
+            font-size: 6px;
+            margin-bottom: 1px;
         }
         
         .stat-value {
-            font-size: 7px;
+            font-size: 10px;
         }
         
         .stat-item.leave-stat {
-            min-width: 20px;
-            padding: 1px 2px;
+            min-width: 24px;
+            padding: 2px 3px;
         }
         
         .stat-item.leave-stat .stat-value {
-            font-size: 7px !important;
+            font-size: 10px !important;
         }
         
         .stat-item.leave-stat .stat-label {
-            font-size: 4px !important;
+            font-size: 5px !important;
         }
         
         .countdown-timer {
-            font-size: 8px;
+            font-size: 11px;
         }
         
         .game-grid-container {
@@ -1630,33 +1630,33 @@
 
     @media (max-width: 360px) {
         .game-stats {
-            padding: 2px 2px;
-            min-height: 28px;
-            gap: 1px;
+            padding: 3px 3px;
+            min-height: 34px;
+            gap: 1.5px;
         }
         
         .stat-item {
-            padding: 1px 1.5px;
-            min-width: 16px;
-            max-width: 45px;
+            padding: 1px 2px;
+            min-width: 22px;
+            max-width: 55px;
         }
         
         .stat-label {
-            font-size: 4px;
+            font-size: 5px;
             margin-bottom: 0;
         }
         
         .stat-value {
-            font-size: 6px;
+            font-size: 9px;
         }
         
         .stat-item.leave-stat {
-            min-width: 16px;
-            padding: 1px 1.5px;
+            min-width: 20px;
+            padding: 1px 2px;
         }
         
         .stat-item.leave-stat .stat-value {
-            font-size: 6px !important;
+            font-size: 9px !important;
         }
         
         .stat-item.leave-stat .stat-label {
@@ -1664,7 +1664,7 @@
         }
         
         .countdown-timer {
-            font-size: 7px;
+            font-size: 10px;
         }
         
         .game-grid-container {
@@ -1760,22 +1760,22 @@
     
     @media (max-width: 767px) and (orientation: landscape) {
         .game-stats {
-            padding: 2px 4px;
-            min-height: 30px;
+            padding: 4px 6px;
+            min-height: 38px;
         }
         
         .stat-item {
-            padding: 1px 3px;
-            min-width: 20px;
-            max-width: 60px;
+            padding: 2px 4px;
+            min-width: 28px;
+            max-width: 75px;
         }
         
         .stat-label {
-            font-size: 5px;
+            font-size: 6px;
         }
         
         .stat-value {
-            font-size: 7px;
+            font-size: 10px;
         }
         
         .game-grid-container {
@@ -1828,22 +1828,22 @@
         }
         
         .game-stats {
-            padding: 4px 8px;
-            min-height: 44px;
+            padding: 6px 10px;
+            min-height: 52px;
         }
         
         .stat-item {
-            padding: 2px 6px;
-            min-width: 35px;
-            max-width: 100px;
+            padding: 3px 8px;
+            min-width: 45px;
+            max-width: 120px;
         }
         
         .stat-label {
-            font-size: 7px;
+            font-size: 9px;
         }
         
         .stat-value {
-            font-size: 10px;
+            font-size: 14px;
         }
         
         .game-grid-container {
