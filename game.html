@@ -84,29 +84,40 @@
         min-width: 320px;
     }
     
-    /* Game Stats - Mobile Optimized */
+    /* Game Stats - Fixed to 1 row horizontally */
     .game-stats {
         background: var(--panel-bg);
         border-radius: 8px;
-        padding: 8px;
-        margin-bottom: 8px;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 6px;
+        padding: 4px 6px;
+        margin-bottom: 6px;
+        display: flex;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        justify-content: space-between;
+        align-items: center;
+        gap: 2px;
         border: 1px solid var(--border-color);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        min-height: 44px;
+        width: 100%;
     }
     
     .stat-item {
         text-align: center;
-        padding: 6px 4px;
+        padding: 2px 3px;
         background: rgba(0, 0, 0, 0.3);
-        border-radius: 6px;
+        border-radius: 4px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         border: 1px solid var(--border-color);
         cursor: pointer;
         transition: all 0.2s ease;
+        flex: 0 1 auto;
+        min-width: 30px;
+        max-width: 100px;
+        white-space: nowrap;
     }
     
     .stat-item:hover {
@@ -119,35 +130,40 @@
     }
     
     .stat-label {
-        font-size: 9px;
+        font-size: 7px;
         opacity: 0.8;
-        margin-bottom: 3px;
+        margin-bottom: 1px;
+        white-space: nowrap;
+        line-height: 1.1;
     }
     
     .stat-value {
-        font-size: 14px;
+        font-size: 10px;
         font-weight: 600;
         color: var(--secondary) !important;
         transition: color 0.1s ease;
+        white-space: nowrap;
     }
     
     /* Leave button stat item */
     .stat-item.leave-stat {
-        border-color: rgba(255, 0, 0, 0.3);
+        flex: 0 0 auto;
+        min-width: 28px;
+        padding: 2px 3px;
+        cursor: pointer;
     }
     
     .stat-item.leave-stat .stat-value {
-        color: #ff6b6b !important;
-        font-size: 16px;
+        font-size: 10px !important;
     }
     
     .stat-item.leave-stat .stat-label {
-        color: #ff6b6b;
-        opacity: 0.7;
+        font-size: 6px !important;
+        opacity: 0.6;
     }
     
     .countdown-timer {
-        font-size: 18px;
+        font-size: 11px;
         font-weight: 700;
         color: var(--secondary) !important;
         text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
@@ -163,10 +179,10 @@
     /* Countdown Progress Bar */
     .countdown-progress {
         width: 100%;
-        height: 4px;
+        height: 2px;
         background: rgba(255, 255, 255, 0.1);
-        border-radius: 2px;
-        margin-top: 4px;
+        border-radius: 1px;
+        margin-top: 1px;
         overflow: hidden;
     }
     
@@ -1322,7 +1338,41 @@
         }
         
         .game-stats {
-            grid-template-columns: repeat(3, 1fr);
+            padding: 3px 4px;
+            min-height: 36px;
+            gap: 1.5px;
+        }
+        
+        .stat-item {
+            padding: 1px 2px;
+            min-width: 24px;
+            max-width: 70px;
+        }
+        
+        .stat-label {
+            font-size: 6px;
+            margin-bottom: 0;
+        }
+        
+        .stat-value {
+            font-size: 8px;
+        }
+        
+        .stat-item.leave-stat {
+            min-width: 22px;
+            padding: 1px 2px;
+        }
+        
+        .stat-item.leave-stat .stat-value {
+            font-size: 8px !important;
+        }
+        
+        .stat-item.leave-stat .stat-label {
+            font-size: 5px !important;
+        }
+        
+        .countdown-timer {
+            font-size: 9px;
         }
         
         .current-called-letter-number {
@@ -1442,6 +1492,44 @@
     }
     
     @media (max-width: 480px) {
+        .game-stats {
+            padding: 2px 3px;
+            min-height: 32px;
+            gap: 1px;
+        }
+        
+        .stat-item {
+            padding: 1px 2px;
+            min-width: 20px;
+            max-width: 55px;
+        }
+        
+        .stat-label {
+            font-size: 5px;
+            margin-bottom: 0;
+        }
+        
+        .stat-value {
+            font-size: 7px;
+        }
+        
+        .stat-item.leave-stat {
+            min-width: 20px;
+            padding: 1px 2px;
+        }
+        
+        .stat-item.leave-stat .stat-value {
+            font-size: 7px !important;
+        }
+        
+        .stat-item.leave-stat .stat-label {
+            font-size: 4px !important;
+        }
+        
+        .countdown-timer {
+            font-size: 8px;
+        }
+        
         .game-grid-container {
             gap: 2px;
             min-width: 280px;
@@ -1541,6 +1629,44 @@
     }
 
     @media (max-width: 360px) {
+        .game-stats {
+            padding: 2px 2px;
+            min-height: 28px;
+            gap: 1px;
+        }
+        
+        .stat-item {
+            padding: 1px 1.5px;
+            min-width: 16px;
+            max-width: 45px;
+        }
+        
+        .stat-label {
+            font-size: 4px;
+            margin-bottom: 0;
+        }
+        
+        .stat-value {
+            font-size: 6px;
+        }
+        
+        .stat-item.leave-stat {
+            min-width: 16px;
+            padding: 1px 1.5px;
+        }
+        
+        .stat-item.leave-stat .stat-value {
+            font-size: 6px !important;
+        }
+        
+        .stat-item.leave-stat .stat-label {
+            font-size: 4px !important;
+        }
+        
+        .countdown-timer {
+            font-size: 7px;
+        }
+        
         .game-grid-container {
             min-width: 260px;
             gap: 2px;
@@ -1633,6 +1759,25 @@
     }
     
     @media (max-width: 767px) and (orientation: landscape) {
+        .game-stats {
+            padding: 2px 4px;
+            min-height: 30px;
+        }
+        
+        .stat-item {
+            padding: 1px 3px;
+            min-width: 20px;
+            max-width: 60px;
+        }
+        
+        .stat-label {
+            font-size: 5px;
+        }
+        
+        .stat-value {
+            font-size: 7px;
+        }
+        
         .game-grid-container {
             height: 200px;
             gap: 2px;
@@ -1683,7 +1828,22 @@
         }
         
         .game-stats {
-            grid-template-columns: repeat(3, 1fr);
+            padding: 4px 8px;
+            min-height: 44px;
+        }
+        
+        .stat-item {
+            padding: 2px 6px;
+            min-width: 35px;
+            max-width: 100px;
+        }
+        
+        .stat-label {
+            font-size: 7px;
+        }
+        
+        .stat-value {
+            font-size: 10px;
         }
         
         .game-grid-container {
