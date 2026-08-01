@@ -229,48 +229,6 @@
             margin-right: 4px;
         }
 
-        /* Insufficient balance notification */
-        .insufficient-balance-notification {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #f44336;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 10px;
-            z-index: 1000;
-            font-weight: 500;
-            box-shadow: 0 4px 20px rgba(244, 67, 54, 0.4);
-            animation: slideDown 0.3s ease;
-            max-width: 90%;
-            text-align: center;
-        }
-
-        .insufficient-balance-notification .small {
-            font-size: 12px;
-            opacity: 0.8;
-            display: block;
-            margin-top: 4px;
-        }
-
-        .insufficient-balance-notification .deposit-btn {
-            display: inline-block;
-            margin-top: 8px;
-            padding: 6px 20px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            color: white;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-
-        .insufficient-balance-notification .deposit-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
         #access-denied {
             display: none;
             position: fixed;
@@ -337,27 +295,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        @keyframes slideDown {
-            from {
-                transform: translateX(-50%) translateY(-100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(-50%) translateY(0);
-                opacity: 1;
-            }
-        }
-        @keyframes slideUp {
-            from {
-                transform: translateX(-50%) translateY(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(-50%) translateY(-100%);
-                opacity: 0;
-            }
-        }
-
         @media (max-width: 480px) {
             .container {
                 padding: 10px;
@@ -401,7 +338,7 @@
             <div class="card-option standard" onclick="selectGame(10)">
                 <div class="badge">STANDARD</div>
                 <div class="price">10 <small>birr</small></div>
-                
+               
                 <div class="arrow"><i class="fas fa-arrow-right"></i></div>
             </div>
 
@@ -516,110 +453,45 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    const balance = parseFloat(data.balance || 0);
-                    document.getElementById("wallet-balance").textContent = balance.toFixed(2);
-                    return balance;
+                    document.getElementById("wallet-balance").textContent = 
+                        parseFloat(data.balance || 0).toFixed(2);
                 } else {
                     document.getElementById("wallet-balance").textContent = "0.00";
-                    return 0;
                 }
             } catch (error) {
                 console.error("Error fetching balance:", error);
                 document.getElementById("wallet-balance").textContent = "0.00";
-                return 0;
             }
         }
 
-        // ==================== SHOW INSUFFICIENT BALANCE NOTIFICATION ====================
-        function showInsufficientBalance(price, balance) {
-            // Remove any existing notifications
-            const existing = document.querySelector('.insufficient-balance-notification');
-            if (existing) existing.remove();
-
-            const notification = document.createElement('div');
-            notification.className = 'insufficient-balance-notification';
-            notification.innerHTML = `
-                <i class="fas fa-exclamation-circle"></i> 
-                Insufficient balance! You need ${price} birr. 
-                <strong>Current balance: ${balance.toFixed(2)} birr</strong>
-                <span class="small">You need ${(price - balance).toFixed(2)} more birr to join this game.</span>
-                <div class="deposit-btn" onclick="this.closest('.insufficient-balance-notification').remove()">
-                    <i class="fas fa-times"></i> Dismiss
-                </div>
-            `;
-
-            document.body.appendChild(notification);
-
-            // Auto-dismiss after 5 seconds
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.style.animation = 'slideUp 0.3s ease forwards';
-                    setTimeout(() => notification.remove(), 300);
-                }
-            }, 5000);
-        }
-
-        // ==================== SELECT GAME WITH BALANCE CHECK ====================
-        async function selectGame(price) {
+        // ==================== SELECT GAME - NO BALANCE CHECK ====================
+        function selectGame(price) {
             console.log(`Selected game with card price: ${price} birr`);
 
             // Store the selected price in localStorage
             localStorage.setItem("haset_bingo_card_price", price.toString());
 
             // Show loading overlay
-            const loadingOverlay = document.getElementById("loadingOverlay");
-            loadingOverlay.classList.add("active");
+            document.getElementById("loadingOverlay").classList.add("active");
 
-            try {
-                // Get fresh balance from server
-                const balance = await getUserBalance();
-
-                // Check if user has enough balance
-                if (balance < price) {
-                    // Hide loading overlay
-                    loadingOverlay.classList.remove("active");
-                    
-                    // Show insufficient balance notification
-                    showInsufficientBalance(price, balance);
-                    return;
-                }
-
-                // Determine which game page to redirect to based on price
-                let gamePage;
-                if (price === 10) {
-                    gamePage = '/game.html';  // 10 birr game
-                } else if (price === 20) {
-                    gamePage = '/game_20birr.html';  // 20 birr game (VIP)
-                } else {
-                    gamePage = '/game.html';  // fallback
-                }
-
-                // Redirect to the appropriate game page with parameters
-                const gameUrl = `${gamePage}?price=${price}&user_id=${userId}`;
-                console.log(`Redirecting to: ${gameUrl}`);
-                
-                // Small delay to show loading state
-                setTimeout(() => {
-                    window.location.href = gameUrl;
-                }, 500);
-
-            } catch (error) {
-                console.error("Error during game selection:", error);
-                loadingOverlay.classList.remove("active");
-                
-                // Show error notification
-                const notification = document.createElement('div');
-                notification.className = 'insufficient-balance-notification';
-                notification.style.background = '#FF9800';
-                notification.innerHTML = `
-                    <i class="fas fa-exclamation-triangle"></i> 
-                    Error checking balance. Please try again.
-                    <div class="deposit-btn" onclick="this.closest('.insufficient-balance-notification').remove()">
-                        <i class="fas fa-times"></i> Dismiss
-                    </div>
-                `;
-                document.body.appendChild(notification);
+            // Determine which game page to redirect to based on price
+            let gamePage;
+            if (price === 10) {
+                gamePage = '/game.html';  // 10 birr game
+            } else if (price === 20) {
+                gamePage = '/game_20birr.html';  // 20 birr game (VIP)
+            } else {
+                gamePage = '/game.html';  // fallback
             }
+
+            // Redirect to the appropriate game page with parameters
+            const gameUrl = `${gamePage}?price=${price}&user_id=${userId}`;
+            console.log(`Redirecting to: ${gameUrl}`);
+            
+            // Small delay to show loading state
+            setTimeout(() => {
+                window.location.href = gameUrl;
+            }, 500);
         }
 
         // ==================== KEYBOARD SHORTCUTS ====================
